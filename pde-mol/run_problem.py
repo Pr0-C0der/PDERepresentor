@@ -7,7 +7,9 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
+from pde import Domain1D
 from pde.json_loader import build_problem_from_dict
+from pde.plotting import plot_1d_combined
 
 
 def _load_config(path: Path) -> Dict[str, Any]:
@@ -56,6 +58,7 @@ def main() -> None:
     # Optional visualization block
     vis_cfg = config.get("visualization", {})
     vis_enable = bool(vis_cfg.get("enable", False))
+    vis_type = vis_cfg.get("type", "1d")
     save_dir = vis_cfg.get("save_dir") or "test_plots"
 
     result = problem.solve(
@@ -65,6 +68,32 @@ def main() -> None:
         plot_dir=save_dir,
         **solve_kwargs,
     )
+
+    # Optional combined 1D time-series plot for convenience
+    if vis_enable and isinstance(problem.domain, Domain1D) and vis_type == "1d":
+        x = problem.domain.x
+        # Reconstruct full solutions for non-periodic 1D problems
+        if problem.domain.periodic:
+            full_solutions = result.y
+        else:
+            full_states = []
+            for k, t in enumerate(result.t):
+                interior_k = result.y[:, k]
+                full_k = problem._reconstruct_full_from_interior(  # type: ignore[attr-defined]
+                    interior_k, t
+                )
+                full_states.append(full_k)
+            full_solutions = np.stack(full_states, axis=1)
+
+        combined_path = Path(save_dir) / "solution1d_combined.png"
+        plot_1d_combined(
+            x,
+            full_solutions,
+            result.t,
+            title="Combined 1D time series",
+            savepath=combined_path,
+            max_curves=8,
+        )
 
     if not result.success:
         raise SystemExit("Time integration failed.")

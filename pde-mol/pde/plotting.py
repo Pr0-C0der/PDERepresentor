@@ -122,6 +122,73 @@ def plot_1d_time_series(
     return paths
 
 
+def plot_1d_combined(
+    x: np.ndarray,
+    solutions: np.ndarray,
+    times: Sequence[float],
+    title: Optional[str] = None,
+    savepath: Optional[str | Path] = None,
+    max_curves: Optional[int] = None,
+) -> None:
+    """
+    Plot multiple 1D solution curves at different times on a single figure.
+
+    Parameters
+    ----------
+    x:
+        1D NumPy array of grid coordinates.
+    solutions:
+        2D array of shape (nx, nt), where each column is u(x, t_k).
+    times:
+        Sequence of times corresponding to the columns of ``solutions``.
+    title:
+        Optional plot title.
+    savepath:
+        Optional filesystem path. If provided, the combined figure is saved as
+        a PNG (dpi=150).
+    max_curves:
+        Optional maximum number of time curves to plot. If provided and
+        ``len(times) > max_curves``, a subset of evenly spaced times is chosen.
+
+    Output
+    ------
+    None. The figure is saved and closed if ``savepath`` is provided.
+    """
+    x = np.asarray(x)
+    sol = np.asarray(solutions)
+    times = list(times)
+
+    if sol.ndim != 2:
+        raise ValueError("solutions must be a 2D array of shape (nx, nt).")
+    if sol.shape[1] != len(times):
+        raise ValueError("solutions second dimension must match len(times).")
+
+    nt = sol.shape[1]
+    indices = list(range(nt))
+    if max_curves is not None and nt > max_curves:
+        # Choose a subset of indices, including first and last.
+        indices = np.linspace(0, nt - 1, max_curves, dtype=int).tolist()
+
+    fig, ax = plt.subplots()
+    for k in indices:
+        u = sol[:, k]
+        t = times[k]
+        ax.plot(x, u, label=f"t={t:.3g}")
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("u(x)")
+    if title:
+        ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize="small")
+
+    if savepath is not None:
+        savepath = str(savepath)
+        os.makedirs(os.path.dirname(savepath) or ".", exist_ok=True)
+        fig.savefig(savepath, dpi=150, bbox_inches="tight")
+
+    plt.close(fig)
+
 def plot_2d(
     X: np.ndarray,
     Y: np.ndarray,

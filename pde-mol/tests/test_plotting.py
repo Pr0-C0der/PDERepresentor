@@ -7,7 +7,7 @@ import numpy as np
 
 from pde import Domain1D, Domain2D, InitialCondition, Diffusion, PDEProblem
 from pde.json_loader import load_from_json
-from pde.plotting import plot_1d, plot_2d
+from pde.plotting import plot_1d, plot_1d_combined, plot_2d
 
 
 def test_plot_1d_creates_png(tmp_path: Path):
@@ -79,5 +79,35 @@ def test_json_visualization_like_flow_1d(tmp_path: Path):
 
     pngs = list(tmp_path.glob("*.png"))
     assert len(pngs) >= 1
+
+
+def test_plot_1d_combined_creates_png(tmp_path: Path):
+    dom = Domain1D(0.0, 2 * np.pi, 101, periodic=True)
+    x = dom.x
+
+    # Build a simple time series using a known PDEProblem
+    ic = InitialCondition.from_expression("np.sin(x)")
+    op = Diffusion(0.1)
+    problem = PDEProblem(domain=dom, operators=[op], ic=ic)
+
+    t0, t1 = 0.0, 0.5
+    t_eval = np.linspace(t0, t1, 6)
+    sol = problem.solve((t0, t1), t_eval=t_eval)
+    assert sol.success
+
+    solutions = sol.y  # shape (nx, nt)
+    savepath = tmp_path / "combined1d.png"
+
+    plot_1d_combined(
+        x,
+        solutions,
+        t_eval,
+        title="Combined 1D time series",
+        savepath=savepath,
+        max_curves=4,
+    )
+
+    assert savepath.is_file()
+    assert savepath.stat().st_size > 0
 
 
