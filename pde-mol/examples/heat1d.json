@@ -1,0 +1,44 @@
+{
+  "domain": {
+    "type": "1d",
+    "x0": 0.0,
+    "x1": 6.283185307179586,
+    "nx": 201,
+    "periodic": true
+  },
+  "initial_condition": {
+    "type": "expression",
+    "expr": "np.sin(x)"
+  },
+  "boundary_conditions": {
+    "left": {
+      "type": "periodic"
+    },
+    "right": {
+      "type": "periodic"
+    }
+  },
+  "operators": [
+    {
+      "type": "diffusion",
+      "nu": 0.5
+    }
+  ],
+  "time": {
+    "t0": 0.0,
+    "t1": 1.0,
+    "num_points": 6,
+    "method": "RK45",
+    "rtol": 1e-8,
+    "atol": 1e-10
+  },
+  "visualization": {
+    "enable": true,
+    "type": "1d",
+    "save_dir": "test_plots",
+    "plot_initial": true,
+    "plot_final": true,
+    "plot_time_series": true
+  }
+}
+

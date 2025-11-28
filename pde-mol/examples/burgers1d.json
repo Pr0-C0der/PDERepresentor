@@ -1,0 +1,38 @@
+{
+    "domain": {
+        "type": "1d",
+        "x0": 0.0,
+        "x1": 6.283185307179586,
+        "nx": 201,
+        "periodic": true
+    },
+    "initial_condition": {
+        "type": "expression",
+        "expr": "np.sin(x)"
+    },
+    "boundary_conditions": {
+        "left": {
+            "type": "periodic"
+        },
+        "right": {
+            "type": "periodic"
+        }
+    },
+    "operators": [
+        {
+            "type": "expression",
+            "expr": "-u*ux + nu*uxx",
+            "params": {
+                "nu": 0.1
+            }
+        }
+    ],
+    "time": {
+        "t0": 0.0,
+        "t1": 0.1,
+        "num_points": 5,
+        "method": "RK45",
+        "rtol": 1e-6,
+        "atol": 1e-8
+    }
+}
