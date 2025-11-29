@@ -2,40 +2,44 @@
   "domain": {
     "type": "1d",
     "x0": 0.0,
-    "x1": 6.283185307179586,
-    "nx": 1000,
-    "periodic": true
+    "x1": 1.0,
+    "nx": 101,
+    "periodic": false
   },
   "initial_condition": {
     "type": "expression",
-    "expr": "np.sin(x)"
+    "expr": "np.ones_like(x)"
   },
   "boundary_conditions": {
     "left": {
-      "type": "periodic"
+      "type": "robin",
+      "h": 1.0,
+      "u_env": 0.2
     },
     "right": {
-      "type": "periodic"
+      "type": "robin",
+      "h": 1.0,
+      "u_env": 0.2
     }
   },
   "operators": [
     {
       "type": "diffusion",
-      "nu": 0.5
+      "nu": 0.1
     }
   ],
   "time": {
     "t0": 0.0,
     "t1": 1.0,
-    "num_points": 1000,
+    "num_points": 400,
     "method": "RK45",
-    "rtol": 1e-8,
-    "atol": 1e-10
+    "rtol": 1e-6,
+    "atol": 1e-8
   },
   "visualization": {
     "enable": true,
     "type": "1d",
-    "save_dir": "heat1d",
+    "save_dir": "moisture_diffusion",
     "plot_initial": true,
     "plot_final": true,
     "plot_time_series": true

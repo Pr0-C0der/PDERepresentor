@@ -17,6 +17,8 @@ from .bc import (
     Periodic,
     NeumannLeft,
     NeumannRight,
+    RobinLeft,
+    RobinRight,
 )
 from .operators import (
     Operator,
@@ -39,6 +41,8 @@ __all__ = [
     "Periodic",
     "NeumannLeft",
     "NeumannRight",
+    "RobinLeft",
+    "RobinRight",
     "Operator",
     "Diffusion",
     "Advection",

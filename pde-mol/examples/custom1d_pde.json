@@ -1,0 +1,50 @@
+{
+  "domain": {
+    "type": "1d",
+    "x0": 0.0,
+    "x1": 1.0,
+    "nx": 201,
+    "periodic": false
+  },
+  "initial_condition": {
+    "type": "expression",
+    "expr": "np.exp(-50.0 * (x - 0.5)**2)"
+  },
+  "boundary_conditions": {
+    "left": {
+      "type": "dirichlet",
+      "value": 0.0
+    },
+    "right": {
+      "type": "dirichlet",
+      "value": 0.0
+    }
+  },
+  "operators": [
+    {
+      "type": "expression",
+      "expr": "-a_param*ux + nu_param*uxx + lam_param*sin(t)*u",
+      "params": {
+        "a_param": 1.0,
+        "nu_param": 0.05,
+        "lam_param": 0.5
+      }
+    }
+  ],
+  "time": {
+    "t0": 0.0,
+    "t1": 1.0,
+    "num_points": 100,
+    "method": "RK45",
+    "rtol": 1e-6,
+    "atol": 1e-8
+  },
+  "visualization": {
+    "enable": true,
+    "type": "1d",
+    "save_dir": "custom_pde_test",
+    "plot_initial": true,
+    "plot_final": true,
+    "plot_time_series": true
+  }
+}

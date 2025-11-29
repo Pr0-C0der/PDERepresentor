@@ -1,0 +1,41 @@
+HEAT 2D PDE PROBLEM
+
+PDE:
+  ∂u/∂t(x, y, t) = ν [∂²u/∂x²(x, y, t) + ∂²u/∂y²(x, y, t)]
+
+Parameters:
+  ν = 0.5 (diffusion coefficient)
+
+Domain:
+  Spatial:
+    x ∈ [0, 2π]  (periodic boundary conditions in x-direction)
+    y ∈ [0, 2π]  (periodic boundary conditions in y-direction)
+    Number of grid points: nx = 100, ny = 100
+  Time:
+    t ∈ [0, 1.0]
+    Number of time points: 100
+
+Boundary conditions:
+  Periodic in both directions:
+    u(0, y, t) = u(2π, y, t)
+    u(x, 0, t) = u(x, 2π, t)
+    ∂u/∂x(0, y, t) = ∂u/∂x(2π, y, t)
+    ∂u/∂y(x, 0, t) = ∂u/∂y(x, 2π, t)
+  for all x, y ∈ [0, 2π] and t ∈ [0, 1.0]
+
+Initial condition:
+  u(x, y, 0) = sin(x) sin(y)
+  for (x, y) ∈ [0, 2π] × [0, 2π]
+
+Notes:
+  - This is the 2D heat equation (linear diffusion equation)
+  - The solution will decay exponentially in time while maintaining the spatial pattern
+  - For the initial condition u(x,y,0) = sin(x) sin(y), the analytic solution is:
+    u(x, y, t) = exp(-2νt) sin(x) sin(y)
+    because ∂²u/∂x² = -sin(x) sin(y) and ∂²u/∂y² = -sin(x) sin(y),
+    so the Laplacian is -2 sin(x) sin(y)
+  - The factor of 2 in the decay rate comes from the sum of the two second derivatives
+  - With periodic BCs, the solution maintains the separable product form throughout time
+  - This is a fundamental test case for 2D diffusion solvers
+
+

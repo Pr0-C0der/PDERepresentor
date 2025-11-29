@@ -7,7 +7,7 @@ import numpy as np
 
 from pde import Domain1D, Domain2D, InitialCondition, Diffusion, PDEProblem
 from pde.json_loader import load_from_json
-from pde.plotting import plot_1d, plot_1d_combined, plot_2d
+from pde.plotting import plot_1d, plot_1d_combined, plot_2d, plot_xt_heatmap
 
 
 def test_plot_1d_creates_png(tmp_path: Path):
@@ -105,6 +105,28 @@ def test_plot_1d_combined_creates_png(tmp_path: Path):
         title="Combined 1D time series",
         savepath=savepath,
         max_curves=4,
+    )
+
+    assert savepath.is_file()
+    assert savepath.stat().st_size > 0
+
+
+def test_plot_xt_heatmap_creates_png(tmp_path: Path):
+    dom = Domain1D(0.0, 2 * np.pi, 101, periodic=True)
+    x = dom.x
+    t_eval = np.linspace(0.0, 1.0, 6)
+
+    # Simple analytic time series: u(x,t) = exp(-t) * sin(x)
+    X, T = np.meshgrid(x, t_eval, indexing="ij")  # shape (nx, nt)
+    solutions = np.exp(-T) * np.sin(X)
+
+    savepath = tmp_path / "xt_heatmap.png"
+    plot_xt_heatmap(
+        x,
+        t_eval,
+        solutions,
+        title="u(x,t) heatmap",
+        savepath=savepath,
     )
 
     assert savepath.is_file()

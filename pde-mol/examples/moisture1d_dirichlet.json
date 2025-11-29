@@ -2,35 +2,34 @@
     "domain": {
         "type": "1d",
         "x0": 0.0,
-        "x1": 6.283185307179586,
-        "nx": 100,
-        "periodic": true
+        "x1": 1.0,
+        "nx": 1000,
+        "periodic": false
     },
     "initial_condition": {
         "type": "expression",
-        "expr": "np.sin(x)"
+        "expr": "np.ones_like(x)"
     },
     "boundary_conditions": {
         "left": {
-            "type": "periodic"
+            "type": "dirichlet",
+            "value": 0.2
         },
         "right": {
-            "type": "periodic"
+            "type": "dirichlet",
+            "value": 0.2
         }
     },
     "operators": [
         {
-            "type": "expression",
-            "expr": "-u*ux + nu*uxx",
-            "params": {
-                "nu": 0.1
-            }
+            "type": "diffusion",
+            "nu": 0.1
         }
     ],
     "time": {
         "t0": 0.0,
-        "t1": 0.1,
-        "num_points": 100,
+        "t1": 1.0,
+        "num_points": 1000,
         "method": "RK45",
         "rtol": 1e-6,
         "atol": 1e-8
@@ -38,7 +37,7 @@
     "visualization": {
         "enable": true,
         "type": "1d",
-        "save_dir": "burgers1d",
+        "save_dir": "moisture_diffusion_dirichlet",
         "plot_initial": true,
         "plot_final": true,
         "plot_time_series": true

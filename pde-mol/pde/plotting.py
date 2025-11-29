@@ -19,6 +19,12 @@ matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
+try:  # optional, used for progress bars when available
+    from tqdm.auto import tqdm  # type: ignore
+except Exception:  # pragma: no cover - fallback when tqdm is unavailable
+    def tqdm(iterable, *args, **kwargs):
+        return iterable
+
 
 def plot_1d(
     x: np.ndarray,
@@ -107,7 +113,13 @@ def plot_1d_time_series(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     paths: List[Path] = []
-    for k, t in enumerate(times):
+    iterator = tqdm(
+        enumerate(times),
+        total=len(times),
+        desc="Plotting 1D time series",
+        leave=False,
+    )
+    for k, t in iterator:
         u = sol[:, k]
         fname = f"{prefix}_t{k:04d}.png"
         fpath = out_dir / fname
@@ -189,6 +201,64 @@ def plot_1d_combined(
 
     plt.close(fig)
 
+
+def plot_xt_heatmap(
+    x: np.ndarray,
+    times: Sequence[float],
+    solutions: np.ndarray,
+    title: Optional[str] = None,
+    savepath: Optional[str | Path] = None,
+) -> None:
+    """
+    Plot u(x, t) as a 2D heatmap with x on the x-axis and t on the y-axis.
+
+    Parameters
+    ----------
+    x:
+        1D NumPy array of spatial grid points (length nx).
+    times:
+        Sequence of time points (length nt).
+    solutions:
+        2D array of shape (nx, nt) with u(x_i, t_j).
+    title:
+        Optional plot title.
+    savepath:
+        Optional filesystem path. If provided, the heatmap is saved as a PNG.
+
+    Output
+    ------
+    None. The figure is saved and closed if ``savepath`` is provided.
+    """
+    x = np.asarray(x)
+    sol = np.asarray(solutions)
+    times = np.asarray(times)
+
+    if sol.ndim != 2:
+        raise ValueError("solutions must be a 2D array of shape (nx, nt).")
+    if sol.shape[0] != x.size:
+        raise ValueError("solutions first dimension must match len(x).")
+    if sol.shape[1] != times.size:
+        raise ValueError("solutions second dimension must match len(times).")
+
+    # Create grids with x along the horizontal axis and t along the vertical.
+    Xg, Tg = np.meshgrid(x, times, indexing="xy")  # shapes (nt, nx)
+    Z = sol.T  # transpose to shape (nt, nx) to match (Tg, Xg)
+
+    fig, ax = plt.subplots()
+    mesh = ax.pcolormesh(Xg, Tg, Z, shading="auto", cmap="viridis")
+    ax.set_xlabel("x")
+    ax.set_ylabel("t")
+    if title:
+        ax.set_title(title)
+    fig.colorbar(mesh, ax=ax, label="u(x,t)")
+
+    if savepath is not None:
+        savepath = str(savepath)
+        os.makedirs(os.path.dirname(savepath) or ".", exist_ok=True)
+        fig.savefig(savepath, dpi=150, bbox_inches="tight")
+
+    plt.close(fig)
+
 def plot_2d(
     X: np.ndarray,
     Y: np.ndarray,
@@ -223,7 +293,7 @@ def plot_2d(
         raise ValueError("X, Y, and U must all have the same 2D shape.")
 
     fig, ax = plt.subplots()
-    mesh = ax.pcolormesh(X, Y, U, shading="auto")
+    mesh = ax.pcolormesh(X, Y, U, shading="auto", cmap="viridis")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     if title:
@@ -281,7 +351,13 @@ def plot_2d_time_series(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     paths: List[Path] = []
-    for k, (U, t) in enumerate(zip(sols, times)):
+    iterator = tqdm(
+        list(zip(sols, times)),
+        total=len(sols),
+        desc="Plotting 2D time series",
+        leave=False,
+    )
+    for k, (U, t) in enumerate(iterator):
         U_arr = np.asarray(U)
         if U_arr.shape != X.shape:
             raise ValueError("Each solution must have the same shape as X and Y.")

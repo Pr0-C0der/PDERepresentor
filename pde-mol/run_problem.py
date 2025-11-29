@@ -9,7 +9,7 @@ import numpy as np
 
 from pde import Domain1D
 from pde.json_loader import build_problem_from_dict
-from pde.plotting import plot_1d_combined
+from pde.plotting import plot_1d_combined, plot_xt_heatmap
 
 
 def _load_config(path: Path) -> Dict[str, Any]:
@@ -59,13 +59,16 @@ def main() -> None:
     vis_cfg = config.get("visualization", {})
     vis_enable = bool(vis_cfg.get("enable", False))
     vis_type = vis_cfg.get("type", "1d")
-    save_dir = vis_cfg.get("save_dir") or "test_plots"
+
+    # All plots from JSON-driven runs go under "plots/<save_dir>/"
+    save_subdir = vis_cfg.get("save_dir") or "default"
+    base_plots_dir = Path("plots") / save_subdir
 
     result = problem.solve(
         t_span,
         t_eval=t_eval,
         plot=vis_enable,
-        plot_dir=save_dir,
+        plot_dir=str(base_plots_dir),
         **solve_kwargs,
     )
 
@@ -85,7 +88,7 @@ def main() -> None:
                 full_states.append(full_k)
             full_solutions = np.stack(full_states, axis=1)
 
-        combined_path = Path(save_dir) / "solution1d_combined.png"
+        combined_path = base_plots_dir / "solution1d_combined.png"
         plot_1d_combined(
             x,
             full_solutions,
@@ -93,6 +96,16 @@ def main() -> None:
             title="Combined 1D time series",
             savepath=combined_path,
             max_curves=8,
+        )
+
+        # u(x,t) heatmap (t on x-axis, x on y-axis)
+        xt_path = base_plots_dir / "solution1d_xt_heatmap.png"
+        plot_xt_heatmap(
+            x,
+            result.t,
+            full_solutions,
+            title="u(x,t) heatmap",
+            savepath=xt_path,
         )
 
     if not result.success:

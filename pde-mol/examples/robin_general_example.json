@@ -2,34 +2,37 @@
     "domain": {
         "type": "1d",
         "x0": 0.0,
-        "x1": 6.283185307179586,
-        "nx": 100,
-        "periodic": true
+        "x1": 1.0,
+        "nx": 101,
+        "periodic": false
     },
     "initial_condition": {
         "type": "expression",
-        "expr": "np.sin(x)"
+        "expr": "np.sin(np.pi * x)"
     },
     "boundary_conditions": {
         "left": {
-            "type": "periodic"
+            "type": "robin",
+            "a": 2.0,
+            "b": 3.0,
+            "c": 5.0
         },
         "right": {
-            "type": "periodic"
+            "type": "robin",
+            "a": 1.0,
+            "b": 1.0,
+            "c_expr": "np.sin(t)"
         }
     },
     "operators": [
         {
-            "type": "expression",
-            "expr": "-u*ux + nu*uxx",
-            "params": {
-                "nu": 0.1
-            }
+            "type": "diffusion",
+            "nu": 0.1
         }
     ],
     "time": {
         "t0": 0.0,
-        "t1": 0.1,
+        "t1": 1.0,
         "num_points": 100,
         "method": "RK45",
         "rtol": 1e-6,
@@ -38,9 +41,9 @@
     "visualization": {
         "enable": true,
         "type": "1d",
-        "save_dir": "burgers1d",
+        "save_dir": "robin_general_example",
         "plot_initial": true,
         "plot_final": true,
-        "plot_time_series": true
+        "plot_time_series": false
     }
 }
