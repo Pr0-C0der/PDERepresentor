@@ -259,7 +259,8 @@ def train_and_test(config_path: str):
     print(f"\nTraining for {num_epochs} epochs...")
     best_test_mse = float('inf')
     
-    for epoch in tqdm(range(num_epochs), desc="Training Progress", unit="epoch"):
+    pbar = tqdm(range(num_epochs), desc="Training Progress", unit="epoch")
+    for epoch in pbar:
         train_loss, train_mse, train_kl = train_epoch(
             model, train_loader, optimizer, criterion, kl_weight, device, epoch, num_epochs
         )
@@ -269,11 +270,18 @@ def train_and_test(config_path: str):
         if test_mse < best_test_mse:
             best_test_mse = test_mse
 
-        if (epoch + 1) % 10 == 0 or epoch == 0:
-            tqdm.write(f"Epoch {epoch+1}/{num_epochs}:")
-            tqdm.write(f"  Train Loss: {train_loss:.6f} (MSE: {train_mse:.6f}, KL: {train_kl:.6f})")
-            tqdm.write(f"  Test MSE: {test_mse:.6f}, Test KL: {test_kl:.6f}")
-            tqdm.write(f"  LR: {scheduler.get_last_lr()[0]:.6f}")
+        # Update progress bar with current loss
+        pbar.set_postfix({
+            'Train Loss': f'{train_loss:.6f}',
+            'Test MSE': f'{test_mse:.6f}',
+            'LR': f'{scheduler.get_last_lr()[0]:.6f}'
+        })
+
+        # Print detailed info after each epoch
+        tqdm.write(f"Epoch {epoch+1}/{num_epochs}:")
+        tqdm.write(f"  Train Loss: {train_loss:.6f} (MSE: {train_mse:.6f}, KL: {train_kl:.6f})")
+        tqdm.write(f"  Test MSE: {test_mse:.6f}, Test KL: {test_kl:.6f}")
+        tqdm.write(f"  LR: {scheduler.get_last_lr()[0]:.6f}")
 
     print(f"\nFinal Test Results:")
     print(f"  Test MSE: {best_test_mse:.6f}")
