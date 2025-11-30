@@ -16,7 +16,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from solvers import heat1d, moisture1d, burgers1d, custom_pde, robin_general
+from solvers import heat1d, moisture1d, burgers1d, custom_pde, robin_general, moisture_1d_sagar
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -68,6 +68,17 @@ def solve_pde(pde_type: str, params: Dict[str, float], config: Dict[str, Any]) -
         t0, t1 = domain["t"]
         nt = domain["nt"]
         z, t, u = moisture1d.solve_moisture1d(
+            params["D"], params["h"], params["X_env"],
+            z0, z1, nz, t0, t1, nt, params["X0"]
+        )
+        return z, t, u
+    
+    elif pde_type == "moisture_1d_sagar":
+        z0, z1 = domain["z"]
+        nz = domain["nz"]
+        t0, t1 = domain["t"]
+        nt = domain["nt"]
+        z, t, u = moisture_1d_sagar.solve_moisture_1d_sagar(
             params["D"], params["h"], params["X_env"],
             z0, z1, nz, t0, t1, nt, params["X0"]
         )
