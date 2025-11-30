@@ -1,0 +1,34 @@
+{
+    "pde_type": "heat1d",
+    "equation": "du/dt = nu * d^2u/dx^2",
+    "domain": {
+        "x": [
+            0.0,
+            6.283185307179586
+        ],
+        "nx": 128,
+        "t": [
+            0.0,
+            1.0
+        ],
+        "nt": 400
+    },
+    "parameters": {
+        "nu": {
+            "low": 0.1,
+            "high": 1.0,
+            "description": "Diffusion coefficient"
+        }
+    },
+    "initial_condition": {
+        "type": "function",
+        "expr": "np.sin(x)"
+    },
+    "boundary_conditions": {
+        "type": "periodic"
+    },
+    "dataset": {
+        "num_samples": 100,
+        "seed": 42
+    }
+}

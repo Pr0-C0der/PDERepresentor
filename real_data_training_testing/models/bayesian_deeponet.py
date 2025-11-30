@@ -1,7 +1,13 @@
+"""
+Generalized Bayesian DeepONet for PDE operator learning.
+
+Adapted from temp.py to work with any PDE data structure.
+"""
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 class BayesianLinear(nn.Module):
     """
@@ -67,7 +73,6 @@ class BayesianLinear(nn.Module):
 
         # weight KL
         weight_log_sigma = torch.log(weight_sigma)
-        # elementwise KL
         kl_weight = torch.sum(
             (prior_log_sigma - weight_log_sigma) +
             (weight_sigma.pow(2) + self.weight_mu.pow(2)) / (2.0 * prior_sigma_sq) -
@@ -91,7 +96,7 @@ class BayesianMLP(nn.Module):
     hidden_dims: list of ints (hidden layer sizes)
     output_dim: final output dimension (e.g. latent dim)
     """
-    def __init__(self, input_dim, hidden_dims, output_dim, dropout=0.1):
+    def __init__(self, input_dim, hidden_dims, output_dim, dropout=0.1, prior_sigma=0.1):
         super().__init__()
         if isinstance(hidden_dims, int):
             hidden_dims = [hidden_dims]
@@ -99,7 +104,7 @@ class BayesianMLP(nn.Module):
         dims = [input_dim] + list(hidden_dims) + [output_dim]
 
         for i in range(len(dims) - 1):
-            self.layers.append(BayesianLinear(dims[i], dims[i+1]))
+            self.layers.append(BayesianLinear(dims[i], dims[i+1], prior_sigma=prior_sigma))
             if i < len(dims) - 2:
                 # add normalization and activation as separate modules to keep ModuleList simple
                 self.layers.append(nn.LayerNorm(dims[i+1]))
@@ -123,8 +128,15 @@ class BayesianMLP(nn.Module):
 
 class BayesianDeepONet(nn.Module):
     """
-    Typical DeepONet: branch_net(u) and trunk_net(y) produce latent vectors of same size,
-    output is dot/elementwise-product fed to final BayesianLinear producing scalar output.
+    Generalized Bayesian DeepONet for PDE operator learning.
+
+    Branch network: takes input function (parameterized by PDE parameters or function values)
+    Trunk network: takes spatial-temporal coordinates (x, t) or (z, t)
+    Output: scalar value u(x, t) or X(z, t)
+
+    This version is generalized to work with:
+    - Any number of PDE parameters (branch_input_dim = n_params)
+    - Any spatial dimension (trunk_input_dim = 2 for 1D spatial + time)
     """
     def __init__(self, branch_input_dim, trunk_input_dim,
                  branch_hidden_dims, trunk_hidden_dims, latent_dim,
@@ -132,8 +144,14 @@ class BayesianDeepONet(nn.Module):
         super().__init__()
 
         # branch and trunk produce latent_dim-sized outputs
-        self.branch_net = BayesianMLP(branch_input_dim, branch_hidden_dims, latent_dim, dropout=dropout)
-        self.trunk_net = BayesianMLP(trunk_input_dim, trunk_hidden_dims, latent_dim, dropout=dropout)
+        self.branch_net = BayesianMLP(
+            branch_input_dim, branch_hidden_dims, latent_dim,
+            dropout=dropout, prior_sigma=prior_sigma
+        )
+        self.trunk_net = BayesianMLP(
+            trunk_input_dim, trunk_hidden_dims, latent_dim,
+            dropout=dropout, prior_sigma=prior_sigma
+        )
 
         # final Bayesian readout (maps latent_dim -> 1)
         self.output_layer = BayesianLinear(latent_dim, 1, prior_sigma=prior_sigma)
@@ -141,9 +159,19 @@ class BayesianDeepONet(nn.Module):
 
     def forward(self, u, y):
         """
-        u: branch input (batch, branch_input_dim)
-        y: trunk input  (batch, trunk_input_dim)
-        returns: (batch, 1)
+        Forward pass.
+
+        Parameters
+        ----------
+        u : torch.Tensor
+            Branch input (batch, branch_input_dim) - PDE parameters
+        y : torch.Tensor
+            Trunk input (batch, trunk_input_dim) - spatial-temporal coordinates (x, t) or (z, t)
+
+        Returns
+        -------
+        output : torch.Tensor
+            (batch, 1) - predicted solution values
         """
         branch_output = self.branch_net(u)   # (batch, latent_dim)
         trunk_output = self.trunk_net(y)     # (batch, latent_dim)
@@ -154,9 +182,40 @@ class BayesianDeepONet(nn.Module):
         return output
 
     def kl_divergence(self):
+        """Compute total KL divergence for all Bayesian layers."""
         return self.branch_net.kl_divergence() + \
                self.trunk_net.kl_divergence() + \
                self.output_layer.kl_divergence()
 
+    def predict_with_uncertainty(self, u, y, num_samples=100):
+        """
+        Predict with uncertainty estimation using Monte Carlo sampling.
 
+        Parameters
+        ----------
+        u : torch.Tensor
+            Branch input (batch, branch_input_dim)
+        y : torch.Tensor
+            Trunk input (batch, trunk_input_dim)
+        num_samples : int
+            Number of Monte Carlo samples
+
+        Returns
+        -------
+        mean : torch.Tensor
+            Mean predictions (batch, 1)
+        std : torch.Tensor
+            Standard deviation of predictions (batch, 1)
+        """
+        self.train()  # Enable dropout and sampling
+        predictions = []
+        with torch.no_grad():
+            for _ in range(num_samples):
+                pred = self.forward(u, y)
+                predictions.append(pred)
+        
+        predictions = torch.stack(predictions, dim=0)  # (num_samples, batch, 1)
+        mean = predictions.mean(dim=0)
+        std = predictions.std(dim=0)
+        return mean, std
 

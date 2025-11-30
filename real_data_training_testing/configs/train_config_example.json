@@ -1,0 +1,22 @@
+{
+  "dataset_path": "data/heat1d_config_dataset.pt",
+  "pde_config_path": "configs/heat1d_config.json",
+  "training": {
+    "num_epochs": 100,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "kl_weight": 1e-4,
+    "train_ratio": 0.8,
+    "seed": 42,
+    "T_max": 100,
+    "eta_min": 0.0,
+    "prior_sigma": 0.1,
+    "dropout": 0.1,
+    "branch_hidden_dims": [128, 128, 128],
+    "trunk_hidden_dims": [128, 128, 128],
+    "latent_dim": 128,
+    "num_test_cases": 4,
+    "test_case_seed": 123
+  }
+}
+
