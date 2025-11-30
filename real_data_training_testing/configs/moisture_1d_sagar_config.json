@@ -22,12 +22,11 @@
       "low": 0.1,
       "high": 0.3,
       "description": "Environmental moisture concentration"
-    },
-    "X0": {
-      "low": 0.8,
-      "high": 1.2,
-      "description": "Initial moisture concentration"
     }
+  },
+  "initial_condition": {
+    "type": "constant",
+    "value": 1.0
   },
   "boundary_conditions": {
     "type": "robin",

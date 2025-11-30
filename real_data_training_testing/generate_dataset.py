@@ -78,9 +78,11 @@ def solve_pde(pde_type: str, params: Dict[str, float], config: Dict[str, Any]) -
         nz = domain["nz"]
         t0, t1 = domain["t"]
         nt = domain["nt"]
+        # Get constant initial condition
+        X0 = config["initial_condition"]["value"]
         z, t, u = moisture_1d_sagar.solve_moisture_1d_sagar(
             params["D"], params["h"], params["X_env"],
-            z0, z1, nz, t0, t1, nt, params["X0"]
+            z0, z1, nz, t0, t1, nt, X0
         )
         return z, t, u
     
