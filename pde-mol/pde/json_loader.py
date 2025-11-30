@@ -172,6 +172,12 @@ def _parse_operator(op_cfg: JsonDict, domain_type: str = "1d") -> Operator:
         else:
             return Diffusion(nu)
 
+    if op_type == "diffusion2d":
+        if "nu" not in op_cfg:
+            raise ValueError("Diffusion2D operator requires 'nu' coefficient.")
+        nu = op_cfg["nu"]
+        return Diffusion2D(nu)
+
     if op_type == "advection":
         if "a" not in op_cfg:
             raise ValueError("Advection operator requires 'a' coefficient.")
@@ -188,6 +194,11 @@ def _parse_operator(op_cfg: JsonDict, domain_type: str = "1d") -> Operator:
             return ExpressionOperator2D(expr_string=expr, params=params)
         else:
             return ExpressionOperator(expr_string=expr, params=params)
+
+    if op_type in ("expression2d", "expression_operator2d"):
+        expr = op_cfg["expr"]
+        params = op_cfg.get("params", {})
+        return ExpressionOperator2D(expr_string=expr, params=params)
 
     raise ValueError(f"Unknown operator type {op_type!r}.")
 

@@ -1,0 +1,49 @@
+{
+  "domain": {
+    "type": "1d",
+    "x0": 0.0,
+    "x1": 1.0,
+    "nx": 101,
+    "periodic": false
+  },
+  "initial_condition": {
+    "type": "expression",
+    "expr": "X0"
+  },
+  "boundary_conditions": {
+    "left": {
+      "type": "dirichlet",
+      "value": "u_boundary"
+    },
+    "right": {
+      "type": "dirichlet",
+      "value": "u_boundary"
+    }
+  },
+  "operators": [
+    {
+      "type": "diffusion",
+      "nu": "D"
+    }
+  ],
+  "time": {
+    "t0": 0.0,
+    "t1": 1.0,
+    "num_points": 100,
+    "method": "RK45",
+    "rtol": 1e-6,
+    "atol": 1e-8
+  },
+  "dataset": {
+    "enabled": true,
+    "num_samples": 50,
+    "parameters": {
+      "D": [0.05, 0.2],
+      "u_boundary": [0.1, 0.3],
+      "X0": [0.8, 1.2]
+    },
+    "savepath": "data/moisture1d_dirichlet_dataset.pt",
+    "seed": 42
+  }
+}
+

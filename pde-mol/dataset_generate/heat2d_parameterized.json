@@ -1,0 +1,50 @@
+{
+  "domain": {
+    "type": "2d",
+    "x0": 0.0,
+    "x1": 6.283185307179586,
+    "nx": 51,
+    "y0": 0.0,
+    "y1": 6.283185307179586,
+    "ny": 51,
+    "periodic_x": true,
+    "periodic_y": true
+  },
+  "initial_condition": {
+    "type": "expression",
+    "expr": "A0 * np.sin(x) * np.sin(y)"
+  },
+  "boundary_conditions": {
+    "left": {
+      "type": "periodic"
+    },
+    "right": {
+      "type": "periodic"
+    }
+  },
+  "operators": [
+    {
+      "type": "diffusion2d",
+      "nu": "H"
+    }
+  ],
+  "time": {
+    "t0": 0.0,
+    "t1": 1.0,
+    "num_points": 30,
+    "method": "RK45",
+    "rtol": 1e-6,
+    "atol": 1e-8
+  },
+  "dataset": {
+    "enabled": true,
+    "num_samples": 30,
+    "parameters": {
+      "H": [0.1, 1.0],
+      "A0": [0.5, 2.0]
+    },
+    "savepath": "data/heat2d_dataset.pt",
+    "seed": 42
+  }
+}
+

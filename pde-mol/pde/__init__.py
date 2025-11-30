@@ -31,6 +31,13 @@ from .operators import (
 )
 from .problem import PDEProblem
 
+# Dataset generation (optional, requires PyTorch)
+try:
+    from .dataset import ParameterRange, ParameterSampler, generate_dataset
+    _DATASET_AVAILABLE = True
+except ImportError:
+    _DATASET_AVAILABLE = False
+
 __all__ = [
     "Domain1D",
     "Domain2D",
@@ -52,4 +59,7 @@ __all__ = [
     "sum_operators",
     "PDEProblem",
 ]
+
+if _DATASET_AVAILABLE:
+    __all__.extend(["ParameterRange", "ParameterSampler", "generate_dataset"])
 

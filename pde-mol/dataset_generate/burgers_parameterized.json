@@ -1,0 +1,41 @@
+{
+  "domain": {
+    "type": "1d",
+    "x0": 0.0,
+    "x1": 6.283185307179586,
+    "nx": 201,
+    "periodic": true
+  },
+  "initial_condition": {
+    "type": "expression",
+    "expr": "A0 * np.sin(x)"
+  },
+  "operators": [
+    {
+      "type": "expression",
+      "expr": "-u*ux + nu*uxx",
+      "params": {
+        "nu": "nu"
+      }
+    }
+  ],
+  "time": {
+    "t0": 0.0,
+    "t1": 1.0,
+    "num_points": 100,
+    "method": "RK45",
+    "rtol": 1e-6,
+    "atol": 1e-8
+  },
+  "dataset": {
+    "enabled": true,
+    "num_samples": 50,
+    "parameters": {
+      "nu": [0.01, 0.1],
+      "A0": [0.5, 2.0]
+    },
+    "savepath": "data/burgers_dataset.pt",
+    "seed": 42
+  }
+}
+

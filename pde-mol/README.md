@@ -25,7 +25,7 @@ The design emphasises:
 - `pde/`
   - `domain.py` – `Domain1D`, `Domain2D` (structured grids, flatten/unflatten).
   - `ic.py` – `InitialCondition` (expression / callable / array ICs).
-  - `bc.py` – Dirichlet, Neumann, Periodic BCs + Neumann ghost helpers.
+  - `bc.py` – Dirichlet, Neumann, Periodic, and Robin BCs + Neumann ghost helpers.
   - `operators.py` – 1D/2D diffusion, advection, expression operators, sums.
   - `plotting.py` – 1D/2D plotting helpers and time-series PNG generation.
   - `sparse_ops.py` – sparse 1D/2D Laplacian builders (CSR matrices).
@@ -35,6 +35,14 @@ The design emphasises:
 - `examples/`
   - `heat1d.json` – 1D periodic heat equation.
   - `burgers1d.json` – 1D Burgers-like equation.
+  - `moisture1d.json` – 1D moisture diffusion with Robin BCs.
+  - `moisture1d_dirichlet.json` – 1D moisture diffusion with Dirichlet BCs.
+  - `custom1d_pde.json` – Custom 1D PDE with advection-diffusion-reaction.
+  - `heat2d.json` – 2D periodic heat equation.
+  - `burgers2d.json` – 2D Burgers-like equation.
+  - `reaction_diffusion2d.json` – 2D reaction-diffusion equation.
+  - `custom2d_pde.json` – Custom 2D PDE with advection-diffusion-reaction.
+  - `robin_general_example.json` – Example of generalized Robin BCs.
 - `tests/`
   - Unit tests for domains, IC, BC, operators (1D/2D), Neumann BCs,
     `PDEProblem`, JSON loader, and sparse operators.
@@ -101,6 +109,14 @@ what it does. For detailed signatures and parameter types, see the docstrings.
   - `expr`: string in `t` and `np`.  
   - `_evaluate_flux(t) -> float` returns \(q(t)\).  
   - `apply_to_full` does not modify `u_full` directly (enforced via helper).
+
+- **`RobinLeft(a=None, b=None, c=None, c_expr=None, h=None, u_env=None)` / `RobinRight(...)`**  
+  General Robin boundary condition of the form \(a \cdot u + b \cdot u_x = c(t)\) at left/right boundary.  
+  - **General form**: `a`, `b` (coefficients), `c` (constant) or `c_expr` (time-dependent expression in `t` and `np`).  
+  - **Backward compatibility**: `h` (heat/mass transfer coefficient) and `u_env` (environmental value)  
+    converts to \(h \cdot u + u_x = h \cdot u_{env}\) (equivalent to \(u_x = -h \cdot (u - u_{env})\)).  
+  - Uses one-sided first-order finite differences to enforce the condition.  
+  - `apply_to_full(u_full, t, domain)` modifies `u_full[0]` or `u_full[-1]` in-place.
 
 - **`apply_neumann_ghosts(u_full, bc_left, bc_right, t, domain)`**  
   Adjusts boundary values of `u_full` to approximate Neumann fluxes using a
@@ -175,8 +191,10 @@ what it does. For detailed signatures and parameter types, see the docstrings.
     - `initial_full(t0=0.0) -> array` – full state; flattened for 2D.  
     - `initial_interior(t0=0.0) -> array` – 1D interior (non-periodic).  
     - `rhs(t, y) -> array` – unified RHS for testing (dispatches 1D/2D/periodic).  
-    - `solve(t_span, t_eval=None, method="RK45", **kwargs) -> OdeResult` – wraps `solve_ivp`.  
-  - Internally uses `_rhs_periodic`, `_rhs_nonperiodic`, `_rhs_2d` and `_reconstruct_full_from_interior` for 1D non-periodic Neumann/Dirichlet handling.
+    - `solve(t_span, t_eval=None, method="RK45", plot=False, plot_dir=None, **kwargs) -> OdeResult` – wraps `solve_ivp`.  
+      - `plot`: if `True`, generates plots during/after solving (initial, final, time series, combined plots, heatmaps).  
+      - `plot_dir`: directory name for saving plots (plots are saved to `plots/<plot_dir>/`).  
+  - Internally uses `_rhs_periodic`, `_rhs_nonperiodic`, `_rhs_2d` and `_reconstruct_full_from_interior` for 1D non-periodic Neumann/Dirichlet/Robin handling.
 
 #### `json_loader.py`
 
@@ -197,7 +215,7 @@ Exports the main public API:
 
 - `Domain1D`, `Domain2D`  
 - `InitialCondition`  
-- `BoundaryCondition`, `DirichletLeft`, `DirichletRight`, `Periodic`, `NeumannLeft`, `NeumannRight`  
+- `BoundaryCondition`, `DirichletLeft`, `DirichletRight`, `Periodic`, `NeumannLeft`, `NeumannRight`, `RobinLeft`, `RobinRight`  
 - `Operator`, `Diffusion`, `Advection`, `ExpressionOperator`, `sum_operators`, `Diffusion2D`, `ExpressionOperator2D`  
 - `PDEProblem`
 
@@ -209,7 +227,17 @@ Exports the main public API:
 
 - **`plot_1d_time_series(x, solutions, times, prefix="solution1d", out_dir=None)`**  
   Saves a sequence of 1D line plots (one per time) as PNGs named with the
-  given prefix and time index.
+  given prefix and time index. Uses `tqdm` for progress bars when available.
+
+- **`plot_1d_combined(x, solutions, times, title=None, savepath=None, max_curves=None)`**  
+  Plots multiple 1D solution curves at different times on a single figure with
+  a legend. Useful for visualizing time evolution. If `max_curves` is provided,
+  only a subset of evenly spaced times is plotted.
+
+- **`plot_xt_heatmap(x, times, solutions, title=None, savepath=None)`**  
+  Creates a 2D heatmap of \(u(x,t)\) with `x` on the x-axis and `t` on the y-axis.
+  Useful for visualizing the full spatiotemporal evolution of 1D solutions.
+  `solutions` must be a 2D array of shape `(nx, nt)`.
 
 - **`plot_2d(X, Y, U, title=None, savepath=None)`**  
   Uses `pcolormesh` to visualise a 2D scalar field `U(X,Y)` with labeled axes
@@ -217,7 +245,7 @@ Exports the main public API:
 
 - **`plot_2d_time_series(X, Y, solutions, times, prefix="solution2d", out_dir=None)`**  
   Saves a sequence of 2D colormaps (one per time) as PNGs, suitable for
-  combining into GIFs or videos externally.
+  combining into GIFs or videos externally. Uses `tqdm` for progress bars when available.
 
 
 ---
@@ -304,8 +332,27 @@ For `"values"`, `values` must be an array (1D or 2D) matching the grid.
 }
 ```
 
-- Types: `"dirichlet"`, `"neumann"`, `"periodic"`.
-- Neumann BCs support `derivative_value` or `expr` for the flux.
+- Types: `"dirichlet"`, `"neumann"`, `"periodic"`, `"robin"`.
+- **Dirichlet**: `value` (constant) or `expr` (time-dependent expression in `t` and `np`).
+- **Neumann**: `derivative_value` (constant flux) or `expr` (time-dependent flux expression).
+- **Robin** (general form): `a`, `b` (coefficients), `c` (constant) or `c_expr` (time-dependent expression):
+  ```json
+  "left": {
+    "type": "robin",
+    "a": 2.0,
+    "b": 3.0,
+    "c": 5.0
+  }
+  ```
+- **Robin** (backward-compatible form): `h` (heat/mass transfer coefficient) and `u_env` (environmental value):
+  ```json
+  "left": {
+    "type": "robin",
+    "h": 1.0,
+    "u_env": 0.2
+  }
+  ```
+  This is equivalent to \(h \cdot u + u_x = h \cdot u_{env}\) (or \(u_x = -h \cdot (u - u_{env})\)).
 
 #### `operators`
 
@@ -324,11 +371,12 @@ For `"values"`, `values` must be an array (1D or 2D) matching the grid.
 Supported operator entries:
 
 - `"diffusion"` (1D): `{"type": "diffusion", "nu": ...}`
+- `"diffusion2d"` (2D): `{"type": "diffusion2d", "nu": ...}`
 - `"advection"` (1D): `{"type": "advection", "a": ...}`
 - `"expression"` / `"expression_operator"` (1D):
   - `expr` in variables `u, ux, uxx, x, t` plus optional `params`.
-- 2D expression operator (via code, not JSON in examples):
-  - `ExpressionOperator2D` uses `u, ux, uy, uxx, uyy, x, y, t`.
+- `"expression2d"` / `"expression_operator2d"` (2D):
+  - `expr` in variables `u, ux, uy, uxx, uyy, x, y, t` plus optional `params`.
 
 #### `time`
 
@@ -346,6 +394,34 @@ Used by the CLI and tests to define the time grid:
 ```
 
 If `t_eval` is given explicitly it overrides `num_points`.
+
+#### `visualization` (optional)
+
+Controls automatic plotting during/after solving:
+
+```json
+"visualization": {
+  "enable": true,
+  "type": "1d",
+  "save_dir": "my_problem",
+  "plot_initial": true,
+  "plot_final": true,
+  "plot_time_series": true
+}
+```
+
+- `enable`: if `true`, enables plotting (equivalent to `plot=True` in `solve()`).
+- `type`: `"1d"` or `"2d"` (determines which plotting functions are used).
+- `save_dir`: directory name for saving plots (plots saved to `plots/<save_dir>/`).
+- `plot_initial`: if `true`, saves initial condition plot.
+- `plot_final`: if `true`, saves final solution plot.
+- `plot_time_series`: if `true`, saves time series plots (individual frames for 1D/2D, plus combined plot and heatmap for 1D).
+
+For 1D problems, when enabled, automatically generates:
+- Initial and final solution plots
+- Time series plots (individual frames)
+- Combined plot showing multiple time slices
+- Heatmap of \(u(x,t)\) with `x` on x-axis and `t` on y-axis
 
 ---
 
@@ -416,11 +492,12 @@ The tests cover:
 
 - `Domain1D` / `Domain2D` creation, spacing, flatten/unflatten.
 - `InitialCondition` evaluation for expressions, arrays, callables (1D/2D).
-- Boundary conditions (Dirichlet, Periodic, Neumann with ghost enforcement).
+- Boundary conditions (Dirichlet, Periodic, Neumann with ghost enforcement, Robin with general and backward-compatible forms).
 - 1D/2D diffusion, advection, and expression operators.
 - `PDEProblem` RHS and time integration for multiple analytic test PDEs.
 - JSON loading and CLI-style problem execution.
 - Sparse Laplacian builders vs FD operators.
+- Plotting utilities for 1D/2D solutions, time series, combined plots, and heatmaps.
 
 You can wire this into CI (e.g. GitHub Actions) by running `pytest` in a job
 after installing `requirements.txt`. Each module and function is documented

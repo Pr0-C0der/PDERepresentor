@@ -1,0 +1,57 @@
+{
+    "domain": {
+        "type": "1d",
+        "x0": 0.0,
+        "x1": 1.0,
+        "nx": 101,
+        "periodic": false
+    },
+    "initial_condition": {
+        "type": "expression",
+        "expr": "np.ones_like(x)"
+    },
+    "boundary_conditions": {
+        "left": {
+            "type": "dirichlet",
+            "value": "u_left"
+        },
+        "right": {
+            "type": "dirichlet",
+            "value": "u_right"
+        }
+    },
+    "operators": [
+        {
+            "type": "diffusion",
+            "nu": "D"
+        }
+    ],
+    "time": {
+        "t0": 0.0,
+        "t1": 0.5,
+        "num_points": 100,
+        "method": "RK45",
+        "rtol": 1e-6,
+        "atol": 1e-8
+    },
+    "dataset": {
+        "enabled": true,
+        "num_samples": 100,
+        "parameters": {
+            "D": [
+                0.01,
+                0.5
+            ],
+            "u_left": [
+                0.0,
+                0.5
+            ],
+            "u_right": [
+                0.5,
+                1.0
+            ]
+        },
+        "savepath": "data/diffusion_dataset.pt",
+        "seed": 123
+    }
+}

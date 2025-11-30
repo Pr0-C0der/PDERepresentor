@@ -1,0 +1,63 @@
+{
+  "domain": {
+    "type": "2d",
+    "x0": 0.0,
+    "x1": 4.0,
+    "nx": 41,
+    "y0": 0.0,
+    "y1": 4.0,
+    "ny": 41,
+    "periodic_x": false,
+    "periodic_y": false
+  },
+  "initial_condition": {
+    "type": "expression",
+    "expr": "np.exp(-sigma*((x - x0)**2 + (y - y0)**2))"
+  },
+  "boundary_conditions": {
+    "left": {
+      "type": "dirichlet",
+      "value": 0.0
+    },
+    "right": {
+      "type": "dirichlet",
+      "value": 0.0
+    }
+  },
+  "operators": [
+    {
+      "type": "expression2d",
+      "expr": "nu*(uxx + uyy) - a_x*ux - a_y*uy + lam*sin(t)*u",
+      "params": {
+        "nu": "nu",
+        "a_x": "a_x",
+        "a_y": "a_y",
+        "lam": "lam"
+      }
+    }
+  ],
+  "time": {
+    "t0": 0.0,
+    "t1": 1.0,
+    "num_points": 50,
+    "method": "RK45",
+    "rtol": 1e-6,
+    "atol": 1e-8
+  },
+  "dataset": {
+    "enabled": true,
+    "num_samples": 30,
+    "parameters": {
+      "nu": [0.01, 0.1],
+      "a_x": [0.2, 1.0],
+      "a_y": [0.2, 1.0],
+      "lam": [0.1, 0.5],
+      "x0": [1.5, 2.5],
+      "y0": [1.5, 2.5],
+      "sigma": [1.0, 3.0]
+    },
+    "savepath": "data/custom2d_pde_dataset.pt",
+    "seed": 42
+  }
+}
+

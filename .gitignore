@@ -212,3 +212,5 @@ __marimo__/
 
 
 pde-mol/plots/
+data/
+dataset_generate_plots/

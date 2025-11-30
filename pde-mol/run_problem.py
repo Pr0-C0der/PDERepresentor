@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from pde import Domain1D
+from pde.dataset import ParameterRange, generate_dataset
 from pde.json_loader import build_problem_from_dict
 from pde.plotting import plot_1d_combined, plot_xt_heatmap
 
@@ -43,12 +44,126 @@ def main() -> None:
         action="store_true",
         help="Suppress detailed output; only exit code indicates success.",
     )
+    parser.add_argument(
+        "--dataset",
+        action="store_true",
+        help="Enable dataset generation mode (overrides JSON dataset.enabled).",
+    )
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=None,
+        help="Number of samples for dataset generation (overrides JSON dataset.num_samples).",
+    )
+    parser.add_argument(
+        "--save",
+        type=str,
+        default=None,
+        help="Save path for dataset .pt file (overrides JSON dataset.savepath).",
+    )
 
     args = parser.parse_args()
 
     config_path = Path(args.config)
     config = _load_config(config_path)
 
+    # Check for dataset generation mode
+    dataset_cfg = config.get("dataset", {})
+    dataset_enabled = args.dataset or bool(dataset_cfg.get("enabled", False))
+
+    if dataset_enabled:
+        # Dataset generation mode
+        if not args.no_output:
+            print("Dataset generation mode enabled.")
+
+        # Parse parameter ranges
+        param_dict = dataset_cfg.get("parameters", {})
+        if not param_dict:
+            raise ValueError("Dataset generation requires 'dataset.parameters' in JSON config.")
+
+        param_ranges = [
+            ParameterRange(name=name, low=float(bounds[0]), high=float(bounds[1]))
+            for name, bounds in param_dict.items()
+        ]
+
+        num_samples = args.samples if args.samples is not None else dataset_cfg.get("num_samples", 50)
+        savepath = args.save if args.save is not None else dataset_cfg.get("savepath", "dataset.pt")
+        seed = dataset_cfg.get("seed", None)
+
+        # Extract time configuration
+        time_cfg = config.get("time", {})
+        t_span = (time_cfg.get("t0", 0.0), time_cfg.get("t1", 1.0))
+        t_eval = None
+        if "num_points" in time_cfg:
+            t_eval = np.linspace(t_span[0], t_span[1], time_cfg["num_points"])
+
+        solver_method = time_cfg.get("method", "RK45")
+        solver_kwargs = {}
+        if "rtol" in time_cfg:
+            solver_kwargs["rtol"] = time_cfg["rtol"]
+        if "atol" in time_cfg:
+            solver_kwargs["atol"] = time_cfg["atol"]
+
+        # Extract problem name from config or savepath
+        problem_name = None
+        if isinstance(config_path, Path):
+            problem_name = config_path.stem
+            # Remove _parameterized suffix if present
+            if problem_name.endswith("_parameterized"):
+                problem_name = problem_name[:-14]
+
+        # Check if heatmaps should be saved (from dataset config or default to True)
+        save_heatmaps = dataset_cfg.get("save_heatmaps", True)
+        overwrite = dataset_cfg.get("overwrite", False)
+
+        # Check if dataset already exists
+        savepath_path = Path(savepath)
+        if savepath_path.exists() and not overwrite:
+            if not args.no_output:
+                print(f"Dataset already exists at: {savepath}")
+                print("Loading existing dataset...")
+            import torch
+            dataset = torch.load(savepath_path)
+            if not args.no_output:
+                print(f"Loaded existing dataset:")
+                print(f"  Parameters shape: {dataset['params'].shape}")
+                print(f"  Solution shape: {dataset['u'].shape}")
+                print(f"  Time points: {dataset['t'].shape[0]}")
+            return
+
+        # Generate dataset
+        if not args.no_output:
+            print(f"Generating {num_samples} samples...")
+            print(f"Parameters: {[pr.name for pr in param_ranges]}")
+            print(f"Saving to: {savepath}")
+            if save_heatmaps:
+                print(f"Saving heatmaps to: dataset_generate_plots/{problem_name}/")
+
+        dataset = generate_dataset(
+            json_template=config,
+            param_ranges=param_ranges,
+            num_samples=num_samples,
+            savepath=savepath,
+            seed=seed,
+            t_span=t_span,
+            t_eval=t_eval,
+            solver_method=solver_method,
+            solver_kwargs=solver_kwargs,
+            save_heatmaps=save_heatmaps,
+            problem_name=problem_name,
+            overwrite=overwrite,
+        )
+
+        if not args.no_output:
+            print(f"Dataset generated successfully!")
+            print(f"  Parameters shape: {dataset['params'].shape}")
+            print(f"  Solution shape: {dataset['u'].shape}")
+            print(f"  Time points: {dataset['t'].shape[0]}")
+            print(f"  Spatial points: {dataset['x'].shape[0] if len(dataset['x'].shape) == 1 else dataset['x'].shape}")
+
+        return
+
+    # Normal single solve mode
     # Build PDEProblem from config dictionary
     problem = build_problem_from_dict(config)
 
