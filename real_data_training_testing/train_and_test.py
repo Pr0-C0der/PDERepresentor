@@ -99,7 +99,7 @@ def create_data_loaders(dataset_path: str, train_ratio: float = 0.8, batch_size:
     return train_loader, test_loader, full_dataset
 
 
-def train_epoch(model, train_loader, optimizer, criterion, kl_weight, device, epoch=None, num_epochs=None):
+def train_epoch(model, train_loader, optimizer, criterion, kl_beta, train_dataset_size, device, epoch=None, num_epochs=None):
     """Train for one epoch."""
     model.train()
     total_loss = 0.0
@@ -127,18 +127,22 @@ def train_epoch(model, train_loader, optimizer, criterion, kl_weight, device, ep
         optimizer.zero_grad()
         predictions = model(params_expanded, coords_flat)
 
-        # Loss
+        # Loss (normalize KL by dataset size, matching temp.py)
         mse_loss = criterion(predictions, values_flat)
-        kl = model.kl_divergence()
-        loss = mse_loss + kl_weight * kl
+        kl_loss = model.kl_divergence()
+        loss = mse_loss + kl_beta * kl_loss / train_dataset_size
 
         # Backward pass
         loss.backward()
+        
+        # Gradient clipping (matching temp.py)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        
         optimizer.step()
 
         total_loss += loss.item()
         total_mse += mse_loss.item()
-        total_kl += kl.item()
+        total_kl += kl_loss.item()
         num_batches += 1
 
     return total_loss / num_batches, total_mse / num_batches, total_kl / num_batches
@@ -202,7 +206,8 @@ def train_and_test(config_path: str):
     num_epochs = train_config["num_epochs"]
     batch_size = train_config["batch_size"]
     learning_rate = train_config["learning_rate"]
-    kl_weight = train_config.get("kl_weight", 1e-4)
+    kl_weight_max = train_config.get("kl_weight", 1e-4)
+    kl_warmup_epochs = train_config.get("kl_warmup_epochs", 0)
     train_ratio = train_config.get("train_ratio", 0.8)
     seed = train_config.get("seed", 42)
 
@@ -229,8 +234,13 @@ def train_and_test(config_path: str):
     train_loader, test_loader, full_dataset = create_data_loaders(
         dataset_path, train_ratio=train_ratio, batch_size=batch_size, seed=seed
     )
-    print(f"  Train samples: {len(train_loader.dataset)}")
+    train_dataset_size = len(train_loader.dataset)
+    print(f"  Train samples: {train_dataset_size}")
     print(f"  Test samples: {len(test_loader.dataset)}")
+    
+    # Print KL warmup info
+    print(f"\nKL Weight Configuration:")
+    print(f"  kl_weight_max: {kl_weight_max}, warmup_epochs: {kl_warmup_epochs}")
 
     # Create model
     model = BayesianDeepONet(
@@ -261,8 +271,14 @@ def train_and_test(config_path: str):
     
     pbar = tqdm(range(num_epochs), desc="Training Progress", unit="epoch")
     for epoch in pbar:
+        # Compute KL weight with warmup (matching temp.py)
+        if kl_warmup_epochs > 0:
+            kl_beta = kl_weight_max * min(1.0, (epoch + 1) / kl_warmup_epochs)
+        else:
+            kl_beta = kl_weight_max
+        
         train_loss, train_mse, train_kl = train_epoch(
-            model, train_loader, optimizer, criterion, kl_weight, device, epoch, num_epochs
+            model, train_loader, optimizer, criterion, kl_beta, train_dataset_size, device, epoch, num_epochs
         )
         test_mse, test_kl = evaluate(model, test_loader, criterion, device)
         scheduler.step()
@@ -274,6 +290,7 @@ def train_and_test(config_path: str):
         pbar.set_postfix({
             'Train Loss': f'{train_loss:.6f}',
             'Test MSE': f'{test_mse:.6f}',
+            'KL Beta': f'{kl_beta:.6f}',
             'LR': f'{scheduler.get_last_lr()[0]:.6f}'
         })
 
@@ -281,7 +298,7 @@ def train_and_test(config_path: str):
         tqdm.write(f"Epoch {epoch+1}/{num_epochs}:")
         tqdm.write(f"  Train Loss: {train_loss:.6f} (MSE: {train_mse:.6f}, KL: {train_kl:.6f})")
         tqdm.write(f"  Test MSE: {test_mse:.6f}, Test KL: {test_kl:.6f}")
-        tqdm.write(f"  LR: {scheduler.get_last_lr()[0]:.6f}")
+        tqdm.write(f"  KL Beta: {kl_beta:.6f}, LR: {scheduler.get_last_lr()[0]:.6f}")
 
     print(f"\nFinal Test Results:")
     print(f"  Test MSE: {best_test_mse:.6f}")

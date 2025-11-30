@@ -6,6 +6,7 @@
     "batch_size": 32,
     "learning_rate": 0.001,
     "kl_weight": 1e-4,
+    "kl_warmup_epochs": 0,
     "train_ratio": 0.8,
     "seed": 42,
     "T_max": 100,

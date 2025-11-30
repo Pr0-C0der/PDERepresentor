@@ -160,3 +160,56 @@ class BayesianDeepONet(nn.Module):
 
 
 
+
+
+def train(self):
+    print("Starting DeepONet Training")
+    hp_train = self.config['hyperparameters']['training']
+    epochs = hp_train['epochs']
+    best_loss = float('inf')
+
+    kl_weight_max = hp_train['kl_weight']
+    warmup_epochs = hp_train.get('kl_warmup_epochs', 0)
+    print(f'kl_weight_max: {kl_weight_max}, warmup_epochs: {warmup_epochs}')
+
+    for epoch in range(epochs):
+        self.model.train()
+        pbar  = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{epochs}")
+        total_loss = 0
+
+        if warmup_epochs > 0:
+            kl_beta = kl_weight_max * min(1.0, (epoch + 1)/warmup_epochs)
+        else:
+            kl_beta = kl_weight_max
+
+        for conditions, coords, targets in pbar:
+            self.optimizer.zero_grad()
+            conditions = conditions.to(device)
+            coords = coords.to(device)
+            targets = targets.to(device)
+
+            batch_size, num_points = coords.shape[0], coords.shape[1]
+            branch_in = conditions.unsqueeze(1).repeat(1, num_points, 1).view(-1, 3)
+            trunk_in = coords.view(-1, 2)
+
+            y_pred = self.model(branch_in, trunk_in)
+            y_true = targets.view(-1 , 1)
+
+            mse_loss = F.mse_loss(y_pred, y_true)
+            kl_loss = self.model.kl_divergence()
+
+            loss = mse_loss + kl_beta * kl_loss / len(self.train_dataset)
+
+            loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            self.optimizer.step()
+
+            total_loss += loss.item()
+
+        avg_loss = total_loss/len(self.train_loader)
+        self.scheduler.step()
+
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            torch.save(self.model.state_dict(), "k.pt")
