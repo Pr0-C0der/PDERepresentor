@@ -41,12 +41,10 @@ $$
 where $\Delta x = \frac{x_1 - x_0}{N-1}$ is the grid spacing.
 
 The solution becomes a vector:
-$$ \mathbf{u}(t) = [u(x_0, t), u(x_1, t), \ldots, u(x_{N-1}, t)]^T $$
+$$\mathbf{u}(t) = [u(x_0, t), u(x_1, t), \ldots, u(x_{N-1}, t)]^T$$
 
 The PDE becomes a system of ODEs:
-$$
-\frac{d\mathbf{u}}{dt} = \mathbf{F}(\mathbf{u}, t)
-$$
+$$\frac{d\mathbf{u}}{dt} = \mathbf{F}(\mathbf{u}, t)$$
 where $\mathbf{F}$ applies the spatial operator $L$ at each grid point using finite differences.
 
 ---
