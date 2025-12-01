@@ -6,7 +6,7 @@ from typing import Callable, Iterable, List, Optional, Sequence
 import numpy as np
 import sympy as sp
 
-from .domain import Domain1D, Domain2D
+from .domain import Domain1D
 
 
 Array = np.ndarray
@@ -75,6 +75,64 @@ def _central_second_derivative(u: Array, dx: float, periodic: bool) -> Array:
 
     # Non-periodic: approximate u_xx by gradient of gradient
     return np.gradient(np.gradient(u, dx, edge_order=2), dx, edge_order=2)
+
+
+def _central_third_derivative(u: Array, dx: float, periodic: bool) -> Array:
+    """
+    Second-order central third derivative in 1D.
+    
+    Uses the stencil: u_xxx ≈ (u[i+2] - 2*u[i+1] + 2*u[i-1] - u[i-2]) / (2*dx^3)
+    
+    Parameters
+    ----------
+    u:
+        1D array of function values.
+    dx:
+        Grid spacing.
+    periodic:
+        Whether the domain is periodic.
+        
+    Returns
+    -------
+    Array
+        Third derivative approximation with same shape as u.
+    """
+    if u.size < 5:
+        return np.zeros_like(u, dtype=float)
+    
+    d3 = np.zeros_like(u, dtype=float)
+    
+    if periodic:
+        # Interior points: central difference stencil
+        # u_xxx[i] ≈ (u[i+2] - 2*u[i+1] + 2*u[i-1] - u[i-2]) / (2*dx^3)
+        d3[2:-2] = (u[4:] - 2.0*u[3:-1] + 2.0*u[1:-3] - u[:-4]) / (2.0 * dx**3)
+        
+        # Handle boundaries with periodic wrapping
+        # Point 0: wrap to end
+        d3[0] = (u[2] - 2.0*u[1] + 2.0*u[-2] - u[-3]) / (2.0 * dx**3)
+        # Point 1: wrap to end
+        d3[1] = (u[3] - 2.0*u[2] + 2.0*u[0] - u[-2]) / (2.0 * dx**3)
+        # Point -2: wrap to beginning
+        d3[-2] = (u[0] - 2.0*u[-1] + 2.0*u[-3] - u[-4]) / (2.0 * dx**3)
+        # Point -1: same as point 0 (periodic)
+        d3[-1] = d3[0]
+        return d3
+    
+    # Non-periodic: use one-sided differences at boundaries
+    # Interior: central difference
+    d3[2:-2] = (u[4:] - 2.0*u[3:-1] + 2.0*u[1:-3] - u[:-4]) / (2.0 * dx**3)
+    
+    # Left boundary: forward differences
+    # Third-order forward: u_xxx[0] ≈ (-u[3] + 3*u[2] - 3*u[1] + u[0]) / dx^3
+    d3[0] = (-u[3] + 3.0*u[2] - 3.0*u[1] + u[0]) / (dx**3)
+    d3[1] = (-u[4] + 3.0*u[3] - 3.0*u[2] + u[1]) / (dx**3)
+    
+    # Right boundary: backward differences
+    # Third-order backward: u_xxx[-1] ≈ (u[-1] - 3*u[-2] + 3*u[-3] - u[-4]) / dx^3
+    d3[-2] = (u[-1] - 3.0*u[-2] + 3.0*u[-3] - u[-4]) / (dx**3)
+    d3[-1] = (u[-1] - 3.0*u[-2] + 3.0*u[-3] - u[-4]) / (dx**3)
+    
+    return d3
 
 
 def _eval_coeff(
@@ -177,7 +235,7 @@ def sum_operators(ops: Iterable[Operator]) -> Operator:
 @dataclass
 class ExpressionOperator(Operator):
     """
-    Operator defined by a symbolic expression in (u, ux, uxx, x, t, params).
+    Operator defined by a symbolic expression in (u, ux, uxx, uxxx, x, t, params).
 
     The expression is parsed once using sympy, then compiled to a fast
     NumPy function with ``sympy.lambdify``.
@@ -187,6 +245,10 @@ class ExpressionOperator(Operator):
     Burgers'-type operator:
         expr = "-u*ux + nu*uxx"
         params = {"nu": 0.1}
+    
+    KdV-type operator with third-order term:
+        expr = "-u*ux + nu*uxx - alpha*uxxx"
+        params = {"nu": 0.1, "alpha": 0.01}
     """
 
     expr_string: str
@@ -196,9 +258,9 @@ class ExpressionOperator(Operator):
         if self.params is None:
             self.params = {}
 
-        # Define core symbols
-        u, ux, uxx, x, t = sp.symbols("u ux uxx x t")
-        self._base_symbols = {"u": u, "ux": ux, "uxx": uxx, "x": x, "t": t}
+        # Define core symbols (including uxxx for third-order derivatives)
+        u, ux, uxx, uxxx, x, t = sp.symbols("u ux uxx uxxx x t")
+        self._base_symbols = {"u": u, "ux": ux, "uxx": uxx, "uxxx": uxxx, "x": x, "t": t}
 
         # Parameter symbols
         self._param_symbols = {
@@ -240,161 +302,12 @@ class ExpressionOperator(Operator):
         u = np.asarray(u_full, dtype=float)
         ux = _central_first_derivative(u, dx, periodic)
         uxx = _central_second_derivative(u, dx, periodic)
+        uxxx = _central_third_derivative(u, dx, periodic)
 
         # Parameter values in a stable order
         param_vals = [self.params[name] for name in self._param_order]
 
-        result = self._func(u, ux, uxx, x, t, *param_vals)
+        result = self._func(u, ux, uxx, uxxx, x, t, *param_vals)
         return np.asarray(result, dtype=float)
-
-
-# ---------------------------------------------------------------------------
-# 2D operators
-# ---------------------------------------------------------------------------
-
-
-def _second_derivative_axis(u: Array, d: float, axis: int, periodic: bool) -> Array:
-    """
-    Second derivative along a given axis for 2D arrays.
-
-    Uses a wrapped central stencil when ``periodic`` is True, otherwise
-    approximates via ``np.gradient`` twice.
-    """
-    if u.ndim != 2:
-        raise ValueError("Expected a 2D array for _second_derivative_axis.")
-
-    if periodic:
-        d2 = np.zeros_like(u, dtype=float)
-        if axis == 1:  # x-direction (columns)
-            # Interior columns
-            d2[:, 1:-1] = (u[:, 2:] - 2.0 * u[:, 1:-1] + u[:, :-2]) / (d * d)
-            # Periodic ends: wrap to the penultimate column; last column shares derivative with first
-            d2[:, 0] = (u[:, 1] - 2.0 * u[:, 0] + u[:, -2]) / (d * d)
-            d2[:, -1] = d2[:, 0]
-        elif axis == 0:  # y-direction (rows)
-            d2[1:-1, :] = (u[2:, :] - 2.0 * u[1:-1, :] + u[:-2, :]) / (d * d)
-            d2[0, :] = (u[1, :] - 2.0 * u[0, :] + u[-2, :]) / (d * d)
-            d2[-1, :] = d2[0, :]
-        else:
-            raise ValueError("axis must be 0 or 1 for 2D arrays.")
-        return d2
-
-    return np.gradient(np.gradient(u, d, axis=axis, edge_order=2), d, axis=axis, edge_order=2)
-
-
-def _laplacian_2d(u: Array, dx: float, dy: float, periodic_x: bool, periodic_y: bool) -> Array:
-    """
-    2D Laplacian u_xx + u_yy for a 2D array ``u``.
-    """
-    if u.ndim != 2:
-        raise ValueError("Expected a 2D array for _laplacian_2d.")
-
-    u_xx = _second_derivative_axis(u, dx, axis=1, periodic=periodic_x)
-    u_yy = _second_derivative_axis(u, dy, axis=0, periodic=periodic_y)
-    return u_xx + u_yy
-
-
-@dataclass
-class Diffusion2D(Operator):
-    """
-    2D diffusion operator:  nu * (u_xx + u_yy).
-
-    Currently ``nu`` is assumed to be a scalar.
-    """
-
-    nu: float
-
-    def apply(self, u_full: Array, domain, t: float) -> Array:
-        if not isinstance(domain, Domain2D):
-            raise TypeError("Diffusion2D requires a Domain2D instance.")
-
-        U = domain.unflatten(u_full)
-        lap = _laplacian_2d(U, domain.dx, domain.dy, domain.periodic_x, domain.periodic_y)
-        return (float(self.nu) * lap).ravel()
-
-
-@dataclass
-class ExpressionOperator2D(Operator):
-    """
-    2D expression-based operator in terms of (u, ux, uy, uxx, uyy, x, y, t, params).
-
-    Example:
-        expr = "nu*(uxx + uyy) - u*ux"
-        params = {"nu": 0.1}
-    """
-
-    expr_string: str
-    params: Optional[dict] = None
-
-    def __post_init__(self) -> None:
-        if self.params is None:
-            self.params = {}
-
-        u, ux, uy, uxx, uyy, x, y, t = sp.symbols("u ux uy uxx uyy x y t")
-        self._base_symbols = {
-            "u": u,
-            "ux": ux,
-            "uy": uy,
-            "uxx": uxx,
-            "uyy": uyy,
-            "x": x,
-            "y": y,
-            "t": t,
-        }
-
-        self._param_symbols = {name: sp.symbols(name) for name in self.params.keys()}
-
-        allowed_funcs = {
-            name: getattr(sp, name)
-            for name in ["sin", "cos", "exp", "log", "tanh", "sqrt"]
-        }
-
-        local_dict = {
-            **self._base_symbols,
-            **self._param_symbols,
-            **allowed_funcs,
-        }
-
-        self._expr = sp.sympify(self.expr_string, locals=local_dict)
-
-        args = list(self._base_symbols.values()) + list(self._param_symbols.values())
-        self._param_order = list(self._param_symbols.keys())
-
-        self._func = sp.lambdify(args, self._expr, modules=["numpy"])
-
-    def apply(self, u_full: Array, domain, t: float) -> Array:
-        if not isinstance(domain, Domain2D):
-            raise TypeError("ExpressionOperator2D requires a Domain2D instance.")
-
-        U = domain.unflatten(u_full)
-        dx, dy = domain.dx, domain.dy
-
-        # First derivatives
-        if domain.periodic_x:
-            ux = np.zeros_like(U, dtype=float)
-            ux[:, 1:-1] = (U[:, 2:] - U[:, :-2]) / (2.0 * dx)
-            ux[:, 0] = (U[:, 1] - U[:, -2]) / (2.0 * dx)
-            ux[:, -1] = ux[:, 0]
-        else:
-            ux = np.gradient(U, dx, axis=1, edge_order=2)
-
-        if domain.periodic_y:
-            uy = np.zeros_like(U, dtype=float)
-            uy[1:-1, :] = (U[2:, :] - U[:-2, :]) / (2.0 * dy)
-            uy[0, :] = (U[1, :] - U[-2, :]) / (2.0 * dy)
-            uy[-1, :] = uy[0, :]
-        else:
-            uy = np.gradient(U, dy, axis=0, edge_order=2)
-
-        uxx = _second_derivative_axis(U, dx, axis=1, periodic=domain.periodic_x)
-        uyy = _second_derivative_axis(U, dy, axis=0, periodic=domain.periodic_y)
-
-        X = domain.X
-        Y = domain.Y
-
-        param_vals = [self.params[name] for name in self._param_order]
-
-        result = self._func(U, ux, uy, uxx, uyy, X, Y, t, *param_vals)
-        return np.asarray(result, dtype=float).ravel()
 
 

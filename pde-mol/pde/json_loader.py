@@ -15,17 +15,15 @@ from .bc import (
     RobinLeft,
     RobinRight,
 )
-from .domain import Domain1D, Domain2D
+from .domain import Domain1D
 from .ic import InitialCondition
 from .operators import (
     Advection,
     Diffusion,
-    Diffusion2D,
     ExpressionOperator,
-    ExpressionOperator2D,
     Operator,
 )
-from .problem import PDEProblem
+from .problem import PDEProblem, SecondOrderPDEProblem
 
 
 JsonDict = Dict[str, Any]
@@ -41,21 +39,8 @@ def _parse_domain(cfg: JsonDict):
         nx = cfg["nx"]
         periodic = bool(cfg.get("periodic", False))
         return Domain1D(x0=x0, x1=x1, nx=nx, periodic=periodic)
-    elif domain_type == "2d":
-        x0 = cfg["x0"]
-        x1 = cfg["x1"]
-        nx = cfg["nx"]
-        y0 = cfg["y0"]
-        y1 = cfg["y1"]
-        ny = cfg["ny"]
-        periodic_x = bool(cfg.get("periodic_x", False))
-        periodic_y = bool(cfg.get("periodic_y", False))
-        return Domain2D(
-            x0=x0, x1=x1, nx=nx, y0=y0, y1=y1, ny=ny,
-            periodic_x=periodic_x, periodic_y=periodic_y
-        )
     else:
-        raise ValueError(f"Unsupported domain type {domain_type!r}. Use '1d' or '2d'.")
+        raise ValueError(f"Unsupported domain type {domain_type!r}. Only '1d' is supported.")
 
 
 def _parse_initial_condition(cfg: JsonDict) -> InitialCondition:
@@ -159,7 +144,7 @@ def _parse_boundary_conditions(cfg: JsonDict) -> (Optional[BoundaryCondition], O
     return bc_left, bc_right
 
 
-def _parse_operator(op_cfg: JsonDict, domain_type: str = "1d") -> Operator:
+def _parse_operator(op_cfg: JsonDict) -> Operator:
     """Parse a single operator configuration."""
     op_type = op_cfg["type"].lower()
 
@@ -167,76 +152,99 @@ def _parse_operator(op_cfg: JsonDict, domain_type: str = "1d") -> Operator:
         if "nu" not in op_cfg:
             raise ValueError("Diffusion operator requires 'nu' coefficient.")
         nu = op_cfg["nu"]
-        if domain_type == "2d":
-            return Diffusion2D(nu)
-        else:
-            return Diffusion(nu)
-
-    if op_type == "diffusion2d":
-        if "nu" not in op_cfg:
-            raise ValueError("Diffusion2D operator requires 'nu' coefficient.")
-        nu = op_cfg["nu"]
-        return Diffusion2D(nu)
+        return Diffusion(nu)
 
     if op_type == "advection":
         if "a" not in op_cfg:
             raise ValueError("Advection operator requires 'a' coefficient.")
         a = op_cfg["a"]
-        # Note: Advection2D not yet implemented, would need direction
-        if domain_type == "2d":
-            raise ValueError("2D advection operator not yet supported. Use expression operator instead.")
         return Advection(a)
 
     if op_type in ("expression", "expression_operator"):
         expr = op_cfg["expr"]
         params = op_cfg.get("params", {})
-        if domain_type == "2d":
-            return ExpressionOperator2D(expr_string=expr, params=params)
-        else:
-            return ExpressionOperator(expr_string=expr, params=params)
-
-    if op_type in ("expression2d", "expression_operator2d"):
-        expr = op_cfg["expr"]
-        params = op_cfg.get("params", {})
-        return ExpressionOperator2D(expr_string=expr, params=params)
+        return ExpressionOperator(expr_string=expr, params=params)
 
     raise ValueError(f"Unknown operator type {op_type!r}.")
 
 
-def _parse_operators(cfg: JsonDict, domain_type: str = "1d") -> List[Operator]:
+def _parse_operators(cfg: JsonDict) -> List[Operator]:
     ops_cfg = cfg.get("operators")
     if not ops_cfg:
         raise ValueError("JSON configuration must contain a non-empty 'operators' list.")
-    return [_parse_operator(op_cfg, domain_type) for op_cfg in ops_cfg]
+    return [_parse_operator(op_cfg) for op_cfg in ops_cfg]
 
 
-def build_problem_from_dict(config: JsonDict) -> PDEProblem:
+def build_problem_from_dict(config: JsonDict):
     """
-    Build a PDEProblem from an in-memory JSON-like dictionary.
+    Build a PDEProblem or SecondOrderPDEProblem from an in-memory JSON-like dictionary.
+
+    Automatically detects if the problem is second-order (has "initial_condition_ut")
+    and creates the appropriate problem class.
 
     This is the core entry point; ``load_from_json`` is a small wrapper around it.
+    
+    Returns
+    -------
+    PDEProblem or SecondOrderPDEProblem
+        The appropriate problem class based on the configuration.
     """
     domain_cfg = config["domain"]
-    ic_cfg = config["initial_condition"]
-    bc_cfg = config.get("boundary_conditions", {})
-
     domain = _parse_domain(domain_cfg)
-    domain_type = domain_cfg.get("type", "1d").lower()
-    ic = _parse_initial_condition(ic_cfg)
-    operators = _parse_operators(config, domain_type)
+    bc_cfg = config.get("boundary_conditions", {})
     bc_left, bc_right = _parse_boundary_conditions(bc_cfg)
+    
+    # Check if this is a second-order problem
+    if "initial_condition_ut" in config:
+        # Second-order problem: u_tt = L[u] + M[u_t]
+        ic_u_cfg = config["initial_condition"]
+        ic_ut_cfg = config["initial_condition_ut"]
+        
+        ic_u = _parse_initial_condition(ic_u_cfg)
+        ic_ut = _parse_initial_condition(ic_ut_cfg)
+        
+        # Parse spatial operator (applied to u)
+        spatial_ops_cfg = config.get("spatial_operators", config.get("operators", []))
+        if not spatial_ops_cfg:
+            raise ValueError("Second-order problem requires 'spatial_operators' or 'operators'.")
+        
+        from .operators import sum_operators
+        spatial_operators = [_parse_operator(op_cfg) for op_cfg in spatial_ops_cfg]
+        spatial_operator = sum_operators(spatial_operators) if len(spatial_operators) > 1 else spatial_operators[0]
+        
+        # Parse optional u_t operator (applied to u_t, e.g., for damping)
+        u_t_operator = None
+        if "u_t_operators" in config:
+            u_t_ops = [_parse_operator(op_cfg) for op_cfg in config["u_t_operators"]]
+            u_t_operator = sum_operators(u_t_ops) if len(u_t_ops) > 1 else u_t_ops[0]
+        
+        problem = SecondOrderPDEProblem(
+            domain=domain,
+            spatial_operator=spatial_operator,
+            ic_u=ic_u,
+            ic_ut=ic_ut,
+            u_t_operator=u_t_operator,
+            bc_left=bc_left,
+            bc_right=bc_right,
+        )
+        return problem
+    else:
+        # First-order problem: u_t = L[u]
+        ic_cfg = config["initial_condition"]
+        ic = _parse_initial_condition(ic_cfg)
+        operators = _parse_operators(config)
+        
+        problem = PDEProblem(
+            domain=domain,
+            operators=operators,
+            ic=ic,
+            bc_left=bc_left,
+            bc_right=bc_right,
+        )
+        return problem
 
-    problem = PDEProblem(
-        domain=domain,
-        operators=operators,
-        ic=ic,
-        bc_left=bc_left,
-        bc_right=bc_right,
-    )
-    return problem
 
-
-def load_from_json(path: str | Path) -> PDEProblem:
+def load_from_json(path: str | Path):
     """
     Load a PDEProblem from a JSON file.
 

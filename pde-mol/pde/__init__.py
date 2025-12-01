@@ -8,7 +8,7 @@ This initial version exposes the fundamental data structures:
 - Boundary conditions: Dirichlet, Periodic, and Neumann placeholders
 """
 
-from .domain import Domain1D, Domain2D
+from .domain import Domain1D
 from .ic import InitialCondition
 from .bc import (
     BoundaryCondition,
@@ -25,11 +25,9 @@ from .operators import (
     Diffusion,
     Advection,
     ExpressionOperator,
-    Diffusion2D,
-    ExpressionOperator2D,
     sum_operators,
 )
-from .problem import PDEProblem
+from .problem import PDEProblem, SecondOrderPDEProblem
 
 # Dataset generation (optional, requires PyTorch)
 try:
@@ -40,7 +38,6 @@ except ImportError:
 
 __all__ = [
     "Domain1D",
-    "Domain2D",
     "InitialCondition",
     "BoundaryCondition",
     "DirichletLeft",
@@ -54,10 +51,9 @@ __all__ = [
     "Diffusion",
     "Advection",
     "ExpressionOperator",
-    "Diffusion2D",
-    "ExpressionOperator2D",
     "sum_operators",
     "PDEProblem",
+    "SecondOrderPDEProblem",
 ]
 
 if _DATASET_AVAILABLE:

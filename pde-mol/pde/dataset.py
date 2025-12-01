@@ -30,10 +30,10 @@ except ImportError:
     def tqdm(iterable, *args, **kwargs):
         return iterable
 
-from .domain import Domain1D, Domain2D
+from .domain import Domain1D
 from .json_loader import build_problem_from_dict, load_from_json
-from .plotting import plot_xt_heatmap, plot_2d
-from .problem import PDEProblem
+from .plotting import plot_xt_heatmap
+from .problem import PDEProblem, SecondOrderPDEProblem
 
 
 @dataclass
@@ -207,9 +207,9 @@ def generate_dataset(
     dict
         Dictionary containing the dataset with keys:
         - "params": tensor of shape (num_samples, num_params)
-        - "x": tensor of shape (nx,) for 1D or (nx, ny) for 2D
+        - "x": tensor of shape (nx,)
         - "t": tensor of shape (nt,)
-        - "u": tensor of shape (num_samples, nt, nx) for 1D or (num_samples, nt, ny, nx) for 2D
+        - "u": tensor of shape (num_samples, nt, nx)
         - "param_names": list of parameter names in order
     """
     if not TORCH_AVAILABLE:
@@ -302,9 +302,23 @@ def generate_dataset(
         )
 
         # Extract solution
-        if isinstance(domain, Domain1D):
+        # Handle second-order problems differently
+        if isinstance(problem, SecondOrderPDEProblem):
+            # For second-order problems, use sol.u (u component)
+            if domain.periodic:
+                u_full = sol.u  # shape (nx, nt)
+            else:
+                # Reconstruct full u from interior
+                u_full = np.zeros((domain.nx, sol.t.size))
+                for j, t in enumerate(sol.t):
+                    interior_k = sol.y[:, j]
+                    u_full_vec, _ = problem._reconstruct_full_from_interior(interior_k, t)
+                    u_full[:, j] = u_full_vec
+            # Transpose to (nt, nx)
+            u_solution = u_full.T
+        else:
+            # First-order problem: standard handling
             # 1D: sol.y has shape (nx, nt) for periodic or (nx-2, nt) for non-periodic
-            # We need to reconstruct full solution
             if domain.periodic:
                 u_full = sol.y  # shape (nx, nt)
             else:
@@ -320,14 +334,6 @@ def generate_dataset(
                         problem.bc_right.apply_to_full(u_full[:, j], t, domain)
             # Transpose to (nt, nx)
             u_solution = u_full.T
-        else:
-            # 2D: sol.y has shape (nx*ny, nt)
-            # Reshape to (nt, ny, nx)
-            u_flat = sol.y  # shape (nx*ny, nt)
-            nt = u_flat.shape[1]
-            u_solution = np.zeros((nt, domain.ny, domain.nx))
-            for j in range(nt):
-                u_solution[j] = domain.unflatten(u_flat[:, j])
 
         if time_vector is None:
             time_vector = sol.t
@@ -340,53 +346,28 @@ def generate_dataset(
 
         # Save heatmap for this sample if requested
         if save_heatmaps and plot_dir is not None:
-            if isinstance(domain, Domain1D):
-                # 1D: save u(x,t) heatmap
-                heatmap_path = plot_dir / f"sample_{i+1:04d}_heatmap.png"
-                param_str = "_".join([f"{name}_{params[name]:.4f}" for name in param_names])
-                title = f"Sample {i+1}: {param_str}"
-                # plot_xt_heatmap expects solutions of shape (nx, nt)
-                # u_solution is (nt, nx), so we transpose
-                plot_xt_heatmap(
-                    x=domain.x,
-                    times=time_vector,
-                    solutions=u_solution.T,  # Shape (nx, nt)
-                    title=title,
-                    savepath=heatmap_path,
-                )
-            else:
-                # 2D: save final state heatmap
-                heatmap_path = plot_dir / f"sample_{i+1:04d}_final.png"
-                param_str = "_".join([f"{name}_{params[name]:.4f}" for name in param_names])
-                title = f"Sample {i+1} (final): {param_str}"
-                X, Y = domain.X, domain.Y
-                U_final = u_solution[-1]  # Final time step
-                plot_2d(
-                    X=X,
-                    Y=Y,
-                    U=U_final,
-                    title=title,
-                    savepath=heatmap_path,
-                )
+            # 1D: save u(x,t) heatmap
+            heatmap_path = plot_dir / f"sample_{i+1:04d}_heatmap.png"
+            param_str = "_".join([f"{name}_{params[name]:.4f}" for name in param_names])
+            title = f"Sample {i+1}: {param_str}"
+            # plot_xt_heatmap expects solutions of shape (nx, nt)
+            # u_solution is (nt, nx), so we transpose
+            plot_xt_heatmap(
+                x=domain.x,
+                times=time_vector,
+                solutions=u_solution.T,  # Shape (nx, nt)
+                title=title,
+                savepath=heatmap_path,
+            )
 
     # Convert to PyTorch tensors
     params_tensor = torch.tensor(all_params, dtype=torch.float32)  # (num_samples, num_params)
 
-    if isinstance(domain, Domain1D):
-        x_tensor = torch.tensor(domain.x, dtype=torch.float32)  # (nx,)
-        if save_full_time:
-            u_tensor = torch.tensor(np.array(all_solutions), dtype=torch.float32)  # (num_samples, nt, nx)
-        else:
-            u_tensor = torch.tensor(np.array(all_solutions), dtype=torch.float32)  # (num_samples, 1, nx)
+    x_tensor = torch.tensor(domain.x, dtype=torch.float32)  # (nx,)
+    if save_full_time:
+        u_tensor = torch.tensor(np.array(all_solutions), dtype=torch.float32)  # (num_samples, nt, nx)
     else:
-        # 2D: store x and y coordinates
-        X, Y = domain.X, domain.Y
-        x_tensor = torch.tensor(X, dtype=torch.float32)  # (ny, nx)
-        y_tensor = torch.tensor(Y, dtype=torch.float32)  # (ny, nx)
-        if save_full_time:
-            u_tensor = torch.tensor(np.array(all_solutions), dtype=torch.float32)  # (num_samples, nt, ny, nx)
-        else:
-            u_tensor = torch.tensor(np.array(all_solutions), dtype=torch.float32)  # (num_samples, 1, ny, nx)
+        u_tensor = torch.tensor(np.array(all_solutions), dtype=torch.float32)  # (num_samples, 1, nx)
 
     t_tensor = torch.tensor(time_vector, dtype=torch.float32)  # (nt,)
 

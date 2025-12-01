@@ -103,29 +103,21 @@ Templates use parameter placeholders (e.g., `"H"`, `"A0"`) instead of numeric va
 - `custom1d_pde_parameterized.json` - Custom 1D PDE with advection-diffusion-reaction, parameterized advection (a), diffusion (nu), reaction (lam), and initial condition width (sigma)
 - `robin_general_example_parameterized.json` - General Robin BC example with parameterized diffusion (D), initial amplitude (A0), and Robin BC coefficients (a_left, b_left, c_left, a_right, b_right, c_right)
 
-### 2D Problems
-
-- `heat2d_parameterized.json` - 2D heat equation with parameterized diffusion coefficient (H) and initial amplitude (A0)
-- `burgers2d_parameterized.json` - 2D Burgers equation with parameterized viscosity (nu) and initial amplitude (A0)
-- `reaction_diffusion2d_parameterized.json` - 2D reaction-diffusion equation with parameterized diffusion (D), reaction rate (r), initial condition center (x0, y0), and width (sigma)
-- `custom2d_pde_parameterized.json` - Custom 2D PDE with advection-diffusion-reaction, parameterized diffusion (nu), advection (a_x, a_y), reaction (lam), initial condition center (x0, y0), and width (sigma)
-
 ## Dataset Format
 
 The generated `.pt` file contains:
 
 - `params`: Tensor of shape `(num_samples, num_params)` - parameter values
 - `param_names`: List of parameter names in order
-- `x`: Tensor of shape `(nx,)` for 1D or `(ny, nx)` for 2D - spatial grid
+- `x`: Tensor of shape `(nx,)` - spatial grid
 - `t`: Tensor of shape `(nt,)` - time points
-- `u`: Tensor of shape `(num_samples, nt, nx)` for 1D or `(num_samples, nt, ny, nx)` for 2D - solutions
+- `u`: Tensor of shape `(num_samples, nt, nx)` - solutions
 
 ## Heatmap Visualization
 
 When `save_heatmaps: true` is set in the dataset configuration (default), heatmaps are automatically saved for each sample:
 
-- **1D problems**: `u(x,t)` heatmaps saved as `sample_XXXX_heatmap.png` in `dataset_generate_plots/{problem_name}/`
-- **2D problems**: Final state heatmaps saved as `sample_XXXX_final.png` in `dataset_generate_plots/{problem_name}/`
+- `u(x,t)` heatmaps saved as `sample_XXXX_heatmap.png` in `dataset_generate_plots/{problem_name}/`
 
 Each heatmap filename includes the sample number and the plot title includes the parameter values used for that sample. This allows easy verification of the generated dataset.
 

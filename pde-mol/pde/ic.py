@@ -5,7 +5,7 @@ from typing import Callable, Iterable, Optional, Union
 
 import numpy as np
 
-from .domain import Domain1D, Domain2D
+from .domain import Domain1D
 
 ArrayLike = Union[np.ndarray, Iterable[float]]
 
@@ -59,57 +59,28 @@ class InitialCondition:
     # ------------------------------------------------------------------
     # Evaluation
     # ------------------------------------------------------------------
-    def evaluate(self, domain: Union[Domain1D, Domain2D]) -> np.ndarray:
+    def evaluate(self, domain: Domain1D) -> np.ndarray:
         """
         Evaluate the initial condition on the grid defined by ``domain``.
 
-        For 1D domains, expressions use the variable ``x``.
-        For 2D domains, expressions can use ``x`` and ``y`` corresponding to
-        the full 2D meshgrid arrays.
+        Expressions use the variable ``x``.
         """
-        if isinstance(domain, Domain1D):
-            x = domain.x
-            if self.expr is not None:
-                env = _build_safe_eval_env()
-                env["x"] = x
-                result = eval(self.expr, {"__builtins__": {}}, env)
-                return np.asarray(result, dtype=float)
+        x = domain.x
+        if self.expr is not None:
+            env = _build_safe_eval_env()
+            env["x"] = x
+            result = eval(self.expr, {"__builtins__": {}}, env)
+            return np.asarray(result, dtype=float)
 
-            if self.func is not None:
-                result = self.func(x)
-                return np.asarray(result, dtype=float)
+        if self.func is not None:
+            result = self.func(x)
+            return np.asarray(result, dtype=float)
 
-            arr = np.asarray(self.values, dtype=float)
-            if arr.shape != x.shape:
-                raise ValueError(
-                    f"Initial condition values have shape {arr.shape}, "
-                    f"but domain grid has shape {x.shape}."
-                )
-            return arr
-
-        if isinstance(domain, Domain2D):
-            X = domain.X
-            Y = domain.Y
-
-            if self.expr is not None:
-                env = _build_safe_eval_env()
-                env["x"] = X
-                env["y"] = Y
-                result = eval(self.expr, {"__builtins__": {}}, env)
-                return np.asarray(result, dtype=float)
-
-            if self.func is not None:
-                # For 2D, call the function with the X meshgrid.
-                result = self.func(X)
-                return np.asarray(result, dtype=float)
-
-            arr = np.asarray(self.values, dtype=float)
-            if arr.shape != domain.shape:
-                raise ValueError(
-                    f"Initial condition values have shape {arr.shape}, "
-                    f"but domain grid has shape {domain.shape}."
-                )
-            return arr
-
-        raise TypeError(f"Unsupported domain type {type(domain)!r} for InitialCondition.")
+        arr = np.asarray(self.values, dtype=float)
+        if arr.shape != x.shape:
+            raise ValueError(
+                f"Initial condition values have shape {arr.shape}, "
+                f"but domain grid has shape {x.shape}."
+            )
+        return arr
 

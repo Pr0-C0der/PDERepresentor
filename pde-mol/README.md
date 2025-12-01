@@ -3,6 +3,8 @@
 `pde-mol` is a small, modular framework for solving time-dependent PDEs using
 the **Method of Lines (MOL)**, driven by **JSON configuration files**.
 
+**📖 For detailed implementation and architecture information, see [ARCHITECTURE.md](ARCHITECTURE.md)**
+
 In MOL we:
 
 - **discretise space** → obtain a semi-discrete ODE system,
@@ -13,7 +15,7 @@ The design emphasises:
 - **Modularity** – domain, grid, IC, BC, operators, and problem wrapper are
   independent components with clear interfaces.
 - **Simplicity** – straightforward finite-difference defaults, no hidden magic.
-- **Extensibility** – 1D and 2D structured grids, multiple operator types,
+- **Extensibility** – 1D structured grids, multiple operator types,
   expression-based operators, and sparse matrix back-ends.
 - **Safety & performance** – restricted expression evaluation, SymPy-based
   precompilation, and optional sparse operators/Jacobians.
@@ -23,12 +25,12 @@ The design emphasises:
 ### Project layout
 
 - `pde/`
-  - `domain.py` – `Domain1D`, `Domain2D` (structured grids, flatten/unflatten).
+  - `domain.py` – `Domain1D` (structured grids).
   - `ic.py` – `InitialCondition` (expression / callable / array ICs).
   - `bc.py` – Dirichlet, Neumann, Periodic, and Robin BCs + Neumann ghost helpers.
-  - `operators.py` – 1D/2D diffusion, advection, expression operators, sums.
-  - `plotting.py` – 1D/2D plotting helpers and time-series PNG generation.
-  - `sparse_ops.py` – sparse 1D/2D Laplacian builders (CSR matrices).
+  - `operators.py` – 1D diffusion, advection, expression operators, sums.
+  - `plotting.py` – 1D plotting helpers and time-series PNG generation.
+  - `sparse_ops.py` – sparse 1D Laplacian builders (CSR matrices).
   - `problem.py` – `PDEProblem` MOL wrapper and RHS/solve logic.
   - `json_loader.py` – JSON → `PDEProblem` builder.
   - `run_problem.py` – CLI entry point for running JSON-defined problems.
@@ -38,13 +40,9 @@ The design emphasises:
   - `moisture1d.json` – 1D moisture diffusion with Robin BCs.
   - `moisture1d_dirichlet.json` – 1D moisture diffusion with Dirichlet BCs.
   - `custom1d_pde.json` – Custom 1D PDE with advection-diffusion-reaction.
-  - `heat2d.json` – 2D periodic heat equation.
-  - `burgers2d.json` – 2D Burgers-like equation.
-  - `reaction_diffusion2d.json` – 2D reaction-diffusion equation.
-  - `custom2d_pde.json` – Custom 2D PDE with advection-diffusion-reaction.
   - `robin_general_example.json` – Example of generalized Robin BCs.
 - `tests/`
-  - Unit tests for domains, IC, BC, operators (1D/2D), Neumann BCs,
+  - Unit tests for domains, IC, BC, operators (1D), Neumann BCs,
     `PDEProblem`, JSON loader, and sparse operators.
 
 All public classes and functions include docstrings describing **what they do**,
@@ -65,29 +63,18 @@ what it does. For detailed signatures and parameter types, see the docstrings.
   - **Properties**: `x` (1D NumPy array of length `nx`), `dx` (float spacing).  
   - **Methods**: `to_dict() -> dict`, `from_dict(d: dict) -> Domain1D`.
 
-- **`Domain2D(x0, x1, nx, y0, y1, ny, periodic_x=False, periodic_y=False)`**  
-  Structured 2D rectangular domain with tensor-product grid.  
-  - **Inputs**: bounds and counts in x/y; booleans for periodicity along each axis.  
-  - **Properties**:  
-    - `x`, `y` (1D arrays), `X`, `Y` (meshgrids, shape `(ny, nx)`),  
-    - `dx`, `dy` (spacings), `shape` `(ny, nx)`, `size` (`nx*ny`), `periodic` (bool, true if both axes periodic).  
-  - **Methods**:  
-    - `flatten(u2d: array) -> array` (ravel `(ny, nx)` to `(ny*nx,)`),  
-    - `unflatten(u_flat: array) -> array` (reshape back to `(ny, nx)`),  
-    - `to_dict()`, `from_dict(d: dict) -> Domain2D`.
-
 #### `ic.py`
 
 - **`InitialCondition`** (dataclass with `expr`, `values`, `func`)  
   Represents an initial condition as:
-  - string expression in `x` (1D) or `x, y` (2D) with `np` (e.g. `"np.sin(x)"`, `"np.sin(x)*np.sin(y)"`), or  
+  - string expression in `x` with `np` (e.g. `"np.sin(x)"`), or  
   - array-like of values matching the grid, or  
-  - callable `f(x)` (1D) or `f(X)` (2D) returning an array.  
+  - callable `f(x)` returning an array.  
   - **Key methods**:  
     - `from_expression(expr: str) -> InitialCondition`  
     - `from_values(values: array_like) -> InitialCondition`  
     - `from_callable(func: callable) -> InitialCondition`  
-    - `evaluate(domain: Domain1D | Domain2D) -> np.ndarray` – returns 1D or 2D NumPy array on the domain grid.
+    - `evaluate(domain: Domain1D) -> np.ndarray` – returns 1D NumPy array on the domain grid.
 
 #### `bc.py`
 
@@ -156,45 +143,47 @@ what it does. For detailed signatures and parameter types, see the docstrings.
 - **`sum_operators(ops: Iterable[Operator]) -> Operator`**  
   Returns an `Operator` whose `apply` gives the sum of `apply` for all `ops`.
 
-- **`Diffusion2D(nu)`**  
-  2D diffusion: returns `nu * (u_xx + u_yy)` on `Domain2D`.  
-  - `apply(u_full_flat, domain: Domain2D, t) -> flat array` (same size as input).  
-  - Internally unflattens to `(ny, nx)`, applies 2D Laplacian, then flattens.
-
-- **`ExpressionOperator2D(expr_string, params=None)`**  
-  2D expression operator in `(u, ux, uy, uxx, uyy, x, y, t, params)`.  
-  - `expr_string`: e.g. `"nu*(uxx+uyy) - u*ux"`.  
-  - `params`: dict of parameter names → values.  
-  - Uses SymPy to parse and lambdify; computes 2D derivatives via FD stencils.  
-  - `apply(u_full_flat, domain: Domain2D, t) -> flat array`.
+**Note**: `ExpressionOperator` now supports third-order spatial derivatives via the `uxxx` symbol.
 
 #### `sparse_ops.py`
 
 - **`build_1d_laplacian(domain: Domain1D) -> csr_matrix`**  
   Builds a sparse CSR matrix representing the 1D Laplacian consistent with the
-  `Diffusion` operator’s stencil (including periodic endpoints).
-
-- **`build_2d_laplacian(domain: Domain2D) -> csr_matrix`**  
-  Builds a sparse CSR matrix for `u_xx + u_yy` on a tensor-product grid using a
-  Kronecker-sum: `kron(I_y, Lx) + kron(Ly, I_x)`, where `Lx`, `Ly` are 1D Laplacians.
+  `Diffusion` operator's stencil (including periodic endpoints).
 
 #### `problem.py`
 
 - **`PDEProblem(domain, operators, ic, bc_left=None, bc_right=None)`**  
   High-level MOL wrapper that assembles domain, operators, IC, and BCs.  
   - **Inputs**:  
-    - `domain`: `Domain1D` or `Domain2D`,  
-    - `operators`: sequence of `Operator` instances (1D or 2D as appropriate),  
+    - `domain`: `Domain1D`,  
+    - `operators`: sequence of `Operator` instances,  
     - `ic`: `InitialCondition`,  
-    - `bc_left`, `bc_right`: optional `BoundaryCondition` (1D only).  
+    - `bc_left`, `bc_right`: optional `BoundaryCondition`.  
   - **Key methods**:  
-    - `initial_full(t0=0.0) -> array` – full state; flattened for 2D.  
-    - `initial_interior(t0=0.0) -> array` – 1D interior (non-periodic).  
-    - `rhs(t, y) -> array` – unified RHS for testing (dispatches 1D/2D/periodic).  
+    - `initial_full(t0=0.0) -> array` – full state.  
+    - `initial_interior(t0=0.0) -> array` – interior (non-periodic).  
+    - `rhs(t, y) -> array` – unified RHS for testing (dispatches periodic/non-periodic).  
     - `solve(t_span, t_eval=None, method="RK45", plot=False, plot_dir=None, **kwargs) -> OdeResult` – wraps `solve_ivp`.  
       - `plot`: if `True`, generates plots during/after solving (initial, final, time series, combined plots, heatmaps).  
       - `plot_dir`: directory name for saving plots (plots are saved to `plots/<plot_dir>/`).  
-  - Internally uses `_rhs_periodic`, `_rhs_nonperiodic`, `_rhs_2d` and `_reconstruct_full_from_interior` for 1D non-periodic Neumann/Dirichlet/Robin handling.
+  - Internally uses `_rhs_periodic`, `_rhs_nonperiodic` and `_reconstruct_full_from_interior` for non-periodic Neumann/Dirichlet/Robin handling.
+
+- **`SecondOrderPDEProblem(domain, spatial_operator, ic_u, ic_ut, u_t_operator=None, bc_left=None, bc_right=None)`**  
+  Handles second-order time derivatives (u_tt) by converting to first-order system.  
+  - **Inputs**:  
+    - `domain`: `Domain1D`,  
+    - `spatial_operator`: `Operator` L such that u_tt = L[u] + M[u_t],  
+    - `ic_u`: `InitialCondition` for u(x, 0),  
+    - `ic_ut`: `InitialCondition` for u_t(x, 0),  
+    - `u_t_operator`: optional `Operator` M applied to u_t (for damping terms),  
+    - `bc_left`, `bc_right`: optional `BoundaryCondition` (applied to u).  
+  - **Key methods**:  
+    - `initial_full(t0=0.0) -> array` – extended state [u, v] where v = u_t.  
+    - `rhs(t, y) -> array` – returns [u_t, v_t] = [v, L[u] + M[v]].  
+    - `solve(...) -> OdeResult` – same interface as `PDEProblem.solve()`.  
+      - Result object has additional attributes: `result.u` (u component) and `result.v` (v = u_t component).  
+  - **Usage**: For equations like `u_tt = c² * u_xx` (wave equation) or `u_tt = c² * u_xx - γ * u_t` (damped wave).
 
 #### `json_loader.py`
 
@@ -213,11 +202,11 @@ what it does. For detailed signatures and parameter types, see the docstrings.
 
 Exports the main public API:
 
-- `Domain1D`, `Domain2D`  
+- `Domain1D`  
 - `InitialCondition`  
 - `BoundaryCondition`, `DirichletLeft`, `DirichletRight`, `Periodic`, `NeumannLeft`, `NeumannRight`, `RobinLeft`, `RobinRight`  
-- `Operator`, `Diffusion`, `Advection`, `ExpressionOperator`, `sum_operators`, `Diffusion2D`, `ExpressionOperator2D`  
-- `PDEProblem`
+- `Operator`, `Diffusion`, `Advection`, `ExpressionOperator`, `sum_operators`  
+- `PDEProblem`, `SecondOrderPDEProblem`
 
 #### `plotting.py`
 
@@ -238,14 +227,6 @@ Exports the main public API:
   Creates a 2D heatmap of \(u(x,t)\) with `x` on the x-axis and `t` on the y-axis.
   Useful for visualizing the full spatiotemporal evolution of 1D solutions.
   `solutions` must be a 2D array of shape `(nx, nt)`.
-
-- **`plot_2d(X, Y, U, title=None, savepath=None)`**  
-  Uses `pcolormesh` to visualise a 2D scalar field `U(X,Y)` with labeled axes
-  and a colorbar; saves a PNG if `savepath` is provided.
-
-- **`plot_2d_time_series(X, Y, solutions, times, prefix="solution2d", out_dir=None)`**  
-  Saves a sequence of 2D colormaps (one per time) as PNGs, suitable for
-  combining into GIFs or videos externally. Uses `tqdm` for progress bars when available.
 
 
 ---
@@ -296,32 +277,27 @@ A problem is described by a JSON file with the following top-level keys:
 }
 ```
 
-2D:
-
-```json
-"domain": {
-  "type": "2d",
-  "x0": 0.0,
-  "x1": 6.283185307179586,
-  "nx": 81,
-  "y0": 0.0,
-  "y1": 6.283185307179586,
-  "ny": 81,
-  "periodic_x": true,
-  "periodic_y": true
-}
-```
-
 #### `initial_condition`
+
+For first-order problems (u_t = L[u]):
 
 ```json
 "initial_condition": {
   "type": "expression",      // "expression" or "values"
-  "expr": "np.sin(x)"        // for 2D: e.g. "np.sin(x)*np.sin(y)"
+  "expr": "np.sin(x)"
 }
 ```
 
-For `"values"`, `values` must be an array (1D or 2D) matching the grid.
+For second-order problems (u_tt = L[u] + M[u_t]), also include:
+
+```json
+"initial_condition_ut": {
+  "type": "expression",
+  "expr": "0.0"              // u_t(x, 0)
+}
+```
+
+For `"values"`, `values` must be an array matching the grid.
 
 #### `boundary_conditions` (1D)
 
@@ -356,27 +332,84 @@ For `"values"`, `values` must be an array (1D or 2D) matching the grid.
 
 #### `operators`
 
+For first-order problems (u_t = L[u]):
+
 ```json
 "operators": [
   { "type": "diffusion", "nu": 0.5 },
   { "type": "advection", "a": "1.0 + 0.5 * np.cos(x)" },
   {
     "type": "expression",
-    "expr": "-u*ux + nu*uxx",
-    "params": { "nu": 0.1 }
+    "expr": "-u*ux + nu*uxx - alpha*uxxx",
+    "params": { "nu": 0.1, "alpha": 0.01 }
   }
+]
+```
+
+For second-order problems (u_tt = L[u] + M[u_t]):
+
+```json
+"spatial_operators": [
+  { "type": "diffusion", "nu": 1.0 }    // L[u] = c² * u_xx
+],
+"u_t_operators": [                       // Optional: M[u_t] for damping
+  { "type": "advection", "a": 0.1 }     // M[u_t] = -γ * u_t
 ]
 ```
 
 Supported operator entries:
 
-- `"diffusion"` (1D): `{"type": "diffusion", "nu": ...}`
-- `"diffusion2d"` (2D): `{"type": "diffusion2d", "nu": ...}`
-- `"advection"` (1D): `{"type": "advection", "a": ...}`
-- `"expression"` / `"expression_operator"` (1D):
-  - `expr` in variables `u, ux, uxx, x, t` plus optional `params`.
-- `"expression2d"` / `"expression_operator2d"` (2D):
-  - `expr` in variables `u, ux, uy, uxx, uyy, x, y, t` plus optional `params`.
+- `"diffusion"`: `{"type": "diffusion", "nu": ...}`
+- `"advection"`: `{"type": "advection", "a": ...}`
+- `"expression"` / `"expression_operator"`:
+  - `expr` in variables `u, ux, uxx, uxxx, x, t` plus optional `params`.
+  - Example with third-order derivative: `"expr": "-u*ux - alpha*uxxx"` (KdV-type)
+
+**Example: Mixed-order equation in JSON** \(u_t + u_{tt} = u_x + u_{xx} + u + 5\):
+
+```json
+{
+  "domain": {
+    "type": "1d",
+    "x0": 0.0,
+    "x1": 10.0,
+    "nx": 201,
+    "periodic": false
+  },
+  "initial_condition": {
+    "type": "expression",
+    "expr": "np.sin(x)"
+  },
+  "initial_condition_ut": {
+    "type": "expression",
+    "expr": "0.0"
+  },
+  "spatial_operators": [
+    {
+      "type": "expression",
+      "expr": "ux + uxx + u + 5",
+      "params": {}
+    }
+  ],
+  "u_t_operators": [
+    {
+      "type": "expression",
+      "expr": "-u",
+      "params": {}
+    }
+  ],
+  "time": {
+    "t0": 0.0,
+    "t1": 1.0,
+    "num_points": 100,
+    "method": "BDF",
+    "rtol": 1e-6,
+    "atol": 1e-8
+  }
+}
+```
+
+**Note**: In `u_t_operators`, the symbol `u` in the expression represents `u_t` (the input to the operator), so `"-u"` gives `-u_t`.
 
 #### `time`
 
@@ -411,13 +444,12 @@ Controls automatic plotting during/after solving:
 ```
 
 - `enable`: if `true`, enables plotting (equivalent to `plot=True` in `solve()`).
-- `type`: `"1d"` or `"2d"` (determines which plotting functions are used).
 - `save_dir`: directory name for saving plots (plots saved to `plots/<save_dir>/`).
 - `plot_initial`: if `true`, saves initial condition plot.
 - `plot_final`: if `true`, saves final solution plot.
-- `plot_time_series`: if `true`, saves time series plots (individual frames for 1D/2D, plus combined plot and heatmap for 1D).
+- `plot_time_series`: if `true`, saves time series plots (individual frames, plus combined plot and heatmap).
 
-For 1D problems, when enabled, automatically generates:
+When enabled, automatically generates:
 - Initial and final solution plots
 - Time series plots (individual frames)
 - Combined plot showing multiple time slices
@@ -433,6 +465,9 @@ You can run a JSON-defined problem using the small CLI:
 cd pde-mol
 python run_problem.py examples/heat1d.json
 python run_problem.py examples/burgers1d.json
+python run_problem.py examples/wave1d.json          # Wave equation (u_tt = c²*u_xx)
+python run_problem.py examples/damped_wave1d.json   # Damped wave equation
+python run_problem.py examples/kdv1d.json           # KdV equation (with u_xxx)
 ```
 
 This will:
@@ -463,20 +498,152 @@ sol = problem.solve((0.0, 1.0), t_eval=np.linspace(0.0, 1.0, 6))
 u_final = sol.y[:, -1]
 ```
 
-**2D heat equation** \(u_t = \nu (u_{xx} + u_{yy})\) on \([0, 2\pi]^2\):
+**Wave equation** \(u_{tt} = c^2 u_{xx}\) on \([0, 2\pi]\):
 
 ```python
-from pde import Domain2D, InitialCondition, PDEProblem
-from pde.operators import Diffusion2D
+from pde import SecondOrderPDEProblem
 
-dom2d = Domain2D(0.0, 2*np.pi, 81, 0.0, 2*np.pi, 81, periodic_x=True, periodic_y=True)
-ic2d = InitialCondition.from_expression("np.sin(x) * np.sin(y)")
-op2d = Diffusion2D(0.1)
+dom = Domain1D(0.0, 2*np.pi, 201, periodic=True)
+ic_u = InitialCondition.from_expression("np.sin(x)")      # u(x, 0)
+ic_ut = InitialCondition.from_expression("0.0")            # u_t(x, 0)
+spatial_op = Diffusion(1.0)  # c² * u_xx
 
-problem2d = PDEProblem(domain=dom2d, operators=[op2d], ic=ic2d)
-sol2d = problem2d.solve((0.0, 0.5), t_eval=[0.0, 0.5])
-U_final = dom2d.unflatten(sol2d.y[:, -1])
+wave_problem = SecondOrderPDEProblem(
+    domain=dom,
+    spatial_operator=spatial_op,
+    ic_u=ic_u,
+    ic_ut=ic_ut
+)
+sol = wave_problem.solve((0.0, 2.0), t_eval=np.linspace(0.0, 2.0, 100))
+u_final = sol.u[:, -1]  # Extract u component
 ```
+
+**KdV equation** \(u_t = -u u_x - \alpha u_{xxx}\) (with third-order derivative):
+
+```python
+from pde.operators import ExpressionOperator
+
+dom = Domain1D(0.0, 2*np.pi, 201, periodic=True)
+ic = InitialCondition.from_expression("np.sin(x)")
+op = ExpressionOperator(
+    expr_string="-u*ux - alpha*uxxx",
+    params={"alpha": 0.01}
+)
+
+problem = PDEProblem(domain=dom, operators=[op], ic=ic)
+sol = problem.solve((0.0, 0.5), t_eval=np.linspace(0.0, 0.5, 100))
+u_final = sol.y[:, -1]
+```
+
+**Mixed-order equation** \(u_t + u_{tt} = u_x + u_{xx} + u + 5\):
+
+This equation contains both first-order and second-order time derivatives. Rearranging: \(u_{tt} = -u_t + u_x + u_{xx} + u + 5\)
+
+```python
+from pde import SecondOrderPDEProblem, ExpressionOperator
+
+dom = Domain1D(0.0, 10.0, 201, periodic=False)
+ic_u = InitialCondition.from_expression("np.sin(x)")
+ic_ut = InitialCondition.from_expression("0.0")
+
+# Spatial operator: u_x + u_xx + u + 5
+spatial_op = ExpressionOperator(
+    expr_string="ux + uxx + u + 5",
+    params={}
+)
+
+# u_t operator: -u_t (when applied to u_t, 'u' represents u_t)
+u_t_op = ExpressionOperator(
+    expr_string="-u",
+    params={}
+)
+
+problem = SecondOrderPDEProblem(
+    domain=dom,
+    spatial_operator=spatial_op,
+    ic_u=ic_u,
+    ic_ut=ic_ut,
+    u_t_operator=u_t_op
+)
+sol = problem.solve((0.0, 1.0), t_eval=np.linspace(0.0, 1.0, 100), method="BDF")
+u_final = sol.u[:, -1]
+```
+
+**Advection-diffusion-reaction equation** \(u_t = -a u_x + \nu u_{xx} + r u (1 - u)\):
+
+```python
+from pde.operators import Advection, Diffusion, ExpressionOperator, sum_operators
+
+dom = Domain1D(0.0, 2*np.pi, 201, periodic=True)
+ic = InitialCondition.from_expression("np.sin(x)")
+
+# Combine multiple operators
+advection = Advection(a=1.0)
+diffusion = Diffusion(nu=0.1)
+reaction = ExpressionOperator(
+    expr_string="r*u*(1 - u)",
+    params={"r": 0.5}
+)
+
+# Sum all operators
+op = sum_operators([advection, diffusion, reaction])
+
+problem = PDEProblem(domain=dom, operators=[op], ic=ic)
+sol = problem.solve((0.0, 2.0), t_eval=np.linspace(0.0, 2.0, 100))
+u_final = sol.y[:, -1]
+```
+
+**Damped wave with source term** \(u_{tt} = c^2 u_{xx} - \gamma u_t + f(x,t)\):
+
+```python
+from pde import SecondOrderPDEProblem, ExpressionOperator
+
+dom = Domain1D(0.0, 2*np.pi, 201, periodic=True)
+ic_u = InitialCondition.from_expression("np.sin(x)")
+ic_ut = InitialCondition.from_expression("0.0")
+
+# Spatial operator: c²*u_xx + source term f(x,t) = sin(x)*exp(-t)
+spatial_op = ExpressionOperator(
+    expr_string="c2*uxx + sin(x)*exp(-t)",
+    params={"c2": 1.0}
+)
+
+# Damping operator: -γ*u_t
+u_t_op = ExpressionOperator(
+    expr_string="-gamma*u",
+    params={"gamma": 0.1}
+)
+
+problem = SecondOrderPDEProblem(
+    domain=dom,
+    spatial_operator=spatial_op,
+    ic_u=ic_u,
+    ic_ut=ic_ut,
+    u_t_operator=u_t_op
+)
+sol = problem.solve((0.0, 2.0), t_eval=np.linspace(0.0, 2.0, 100), method="BDF")
+u_final = sol.u[:, -1]
+```
+
+**Complex expression with multiple spatial derivatives** \(u_t = u u_x + \nu u_{xx} - \alpha u_{xxx} + \beta u\):
+
+```python
+from pde.operators import ExpressionOperator
+
+dom = Domain1D(0.0, 2*np.pi, 201, periodic=True)
+ic = InitialCondition.from_expression("np.sin(x)")
+
+op = ExpressionOperator(
+    expr_string="u*ux + nu*uxx - alpha*uxxx + beta*u",
+    params={"nu": 0.1, "alpha": 0.01, "beta": 0.5}
+)
+
+problem = PDEProblem(domain=dom, operators=[op], ic=ic)
+sol = problem.solve((0.0, 1.0), t_eval=np.linspace(0.0, 1.0, 100))
+u_final = sol.y[:, -1]
+```
+
+For more details on second-order time derivatives and third-order spatial derivatives, see [SECOND_ORDER_AND_THIRD_ORDER.md](SECOND_ORDER_AND_THIRD_ORDER.md).
 
 ---
 
@@ -490,14 +657,14 @@ pytest
 
 The tests cover:
 
-- `Domain1D` / `Domain2D` creation, spacing, flatten/unflatten.
-- `InitialCondition` evaluation for expressions, arrays, callables (1D/2D).
+- `Domain1D` creation, spacing.
+- `InitialCondition` evaluation for expressions, arrays, callables.
 - Boundary conditions (Dirichlet, Periodic, Neumann with ghost enforcement, Robin with general and backward-compatible forms).
-- 1D/2D diffusion, advection, and expression operators.
+- 1D diffusion, advection, and expression operators.
 - `PDEProblem` RHS and time integration for multiple analytic test PDEs.
 - JSON loading and CLI-style problem execution.
 - Sparse Laplacian builders vs FD operators.
-- Plotting utilities for 1D/2D solutions, time series, combined plots, and heatmaps.
+- Plotting utilities for 1D solutions, time series, combined plots, and heatmaps.
 
 You can wire this into CI (e.g. GitHub Actions) by running `pytest` in a job
 after installing `requirements.txt`. Each module and function is documented

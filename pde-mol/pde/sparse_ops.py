@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Tuple
 
 import numpy as np
-from scipy.sparse import csr_matrix, diags, eye, kron
+from scipy.sparse import csr_matrix, diags
 
-from .domain import Domain1D, Domain2D
+from .domain import Domain1D
 
 
 def build_1d_laplacian(domain: Domain1D) -> csr_matrix:
@@ -42,31 +42,5 @@ def build_1d_laplacian(domain: Domain1D) -> csr_matrix:
         A[-1, :] = 0.0
 
     return A.tocsr()
-
-
-def build_2d_laplacian(domain: Domain2D) -> csr_matrix:
-    """
-    Build a sparse 2D Laplacian matrix (u_xx + u_yy) on a tensor-product grid.
-
-    The operator is constructed as a Kronecker sum:
-
-        L2D = kron(I_y, Lx) + kron(Ly, I_x)
-
-    where Lx and Ly are 1D Laplacians along x and y respectively, built with
-    :func:`build_1d_laplacian` using the appropriate periodicity flags.
-    """
-    # 1D domains capturing the x- and y- directions with matching spacing.
-    dom_x = Domain1D(domain.x0, domain.x1, domain.nx, periodic=domain.periodic_x)
-    dom_y = Domain1D(domain.y0, domain.y1, domain.ny, periodic=domain.periodic_y)
-
-    Lx = build_1d_laplacian(dom_x)
-    Ly = build_1d_laplacian(dom_y)
-
-    Ix = eye(domain.nx, format="csr")
-    Iy = eye(domain.ny, format="csr")
-
-    # Kronecker sum
-    L2 = kron(Iy, Lx) + kron(Ly, Ix)
-    return L2.tocsr()
 
 

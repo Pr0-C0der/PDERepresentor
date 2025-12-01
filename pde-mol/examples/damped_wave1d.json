@@ -1,0 +1,45 @@
+{
+    "domain": {
+        "type": "1d",
+        "x0": 0.0,
+        "x1": 6.283185307179586,
+        "nx": 201,
+        "periodic": true
+    },
+    "initial_condition": {
+        "type": "expression",
+        "expr": "np.sin(x)"
+    },
+    "initial_condition_ut": {
+        "type": "expression",
+        "expr": "0.0"
+    },
+    "spatial_operators": [
+        {
+            "type": "diffusion",
+            "nu": 1.0
+        }
+    ],
+    "u_t_operators": [
+        {
+            "type": "advection",
+            "a": 0.1
+        }
+    ],
+    "time": {
+        "t0": 0.0,
+        "t1": 2.0,
+        "num_points": 100,
+        "method": "BDF",
+        "rtol": 1e-6,
+        "atol": 1e-8
+    },
+    "visualization": {
+        "enable": true,
+        "type": "1d",
+        "save_dir": "damped_wave1d",
+        "plot_initial": true,
+        "plot_final": true,
+        "plot_time_series": true
+    }
+}

@@ -10,6 +10,7 @@ import numpy as np
 from pde import Domain1D
 from pde.dataset import ParameterRange, generate_dataset
 from pde.json_loader import build_problem_from_dict
+from pde.problem import SecondOrderPDEProblem
 from pde.plotting import plot_1d_combined, plot_xt_heatmap
 
 
@@ -190,18 +191,33 @@ def main() -> None:
     # Optional combined 1D time-series plot for convenience
     if vis_enable and isinstance(problem.domain, Domain1D) and vis_type == "1d":
         x = problem.domain.x
-        # Reconstruct full solutions for non-periodic 1D problems
-        if problem.domain.periodic:
-            full_solutions = result.y
+        
+        # Handle second-order problems differently (they have result.u attribute)
+        if isinstance(problem, SecondOrderPDEProblem):
+            # For second-order problems, use the u component
+            if problem.domain.periodic:
+                full_solutions = result.u
+            else:
+                # Reconstruct full u from interior
+                full_states = []
+                for k, t in enumerate(result.t):
+                    interior_k = result.y[:, k]
+                    u_full, _ = problem._reconstruct_full_from_interior(interior_k, t)
+                    full_states.append(u_full)
+                full_solutions = np.stack(full_states, axis=1)
         else:
-            full_states = []
-            for k, t in enumerate(result.t):
-                interior_k = result.y[:, k]
-                full_k = problem._reconstruct_full_from_interior(  # type: ignore[attr-defined]
-                    interior_k, t
-                )
-                full_states.append(full_k)
-            full_solutions = np.stack(full_states, axis=1)
+            # First-order problems: standard handling
+            if problem.domain.periodic:
+                full_solutions = result.y
+            else:
+                full_states = []
+                for k, t in enumerate(result.t):
+                    interior_k = result.y[:, k]
+                    full_k = problem._reconstruct_full_from_interior(  # type: ignore[attr-defined]
+                        interior_k, t
+                    )
+                    full_states.append(full_k)
+                full_solutions = np.stack(full_states, axis=1)
 
         combined_path = base_plots_dir / "solution1d_combined.png"
         plot_1d_combined(
@@ -230,7 +246,11 @@ def main() -> None:
         import math
 
         # Report simple diagnostics: final time, L2 norm of solution, etc.
-        u_final = result.y[:, -1]
+        # For second-order problems, use result.u; otherwise use result.y
+        if isinstance(problem, SecondOrderPDEProblem):
+            u_final = result.u[:, -1]
+        else:
+            u_final = result.y[:, -1]
         t_final = result.t[-1]
 
         l2 = math.sqrt(float(np.sum(u_final**2)) / u_final.size)
