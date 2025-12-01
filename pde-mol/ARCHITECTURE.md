@@ -2,6 +2,8 @@
 
 This document provides a comprehensive explanation of the code flow, mathematical foundations, and implementation details of the `pde-mol` library. It covers how JSON configurations are parsed, how initial and boundary conditions are applied, how PDEs are solved, and how results are visualized.
 
+> **Note:** This document uses LaTeX math notation. On GitHub, math is rendered using `$$...$$` for display equations and `$...$` for inline math. If viewing in a plain text editor, LaTeX syntax will be visible but the math will still be readable.
+
 ---
 
 ## Table of Contents
@@ -29,25 +31,25 @@ The `pde-mol` library implements the **Method of Lines (MOL)** for solving parti
 ### Mathematical Foundation
 
 Given a PDE of the form:
-\[
+$$
 \frac{\partial u}{\partial t} = L[u]
-\]
-where \(L[u]\) is a spatial operator (e.g., \(L[u] = \nu \frac{\partial^2 u}{\partial x^2}\) for diffusion), we discretize space:
-\[
+$$
+where $L[u]$ is a spatial operator (e.g., $L[u] = \nu \frac{\partial^2 u}{\partial x^2}$ for diffusion), we discretize space:
+$$
 x_i = x_0 + i \cdot \Delta x, \quad i = 0, 1, \ldots, N-1
-\]
-where \(\Delta x = \frac{x_1 - x_0}{N-1}\) is the grid spacing.
+$$
+where $\Delta x = \frac{x_1 - x_0}{N-1}$ is the grid spacing.
 
 The solution becomes a vector:
-\[
+$$
 \mathbf{u}(t) = [u(x_0, t), u(x_1, t), \ldots, u(x_{N-1}, t)]^T
-\]
+$$
 
 The PDE becomes a system of ODEs:
-\[
+$$
 \frac{d\mathbf{u}}{dt} = \mathbf{F}(\mathbf{u}, t)
-\]
-where \(\mathbf{F}\) applies the spatial operator \(L\) at each grid point using finite differences.
+$$
+where $\mathbf{F}$ applies the spatial operator $L$ at each grid point using finite differences.
 
 ---
 
@@ -112,9 +114,9 @@ def _parse_domain(cfg: JsonDict):
 ```
 
 **Mathematical Result:** Creates a structured grid:
-\[
+$$
 x_i = x_0 + i \cdot \frac{x_1 - x_0}{N-1}, \quad i = 0, 1, \ldots, N-1
-\]
+$$
 
 #### Initial Condition Parser: `_parse_initial_condition()`
 
@@ -200,18 +202,18 @@ self._dx = float(self._x[1] - self._x[0])
 **Mathematical Details:**
 
 For a uniform grid:
-\[
+$$
 x_i = x_0 + i \cdot \Delta x, \quad \Delta x = \frac{x_1 - x_0}{N-1}
-\]
+$$
 
-The grid spacing \(\Delta x\) is constant, ensuring second-order accuracy for central differences.
+The grid spacing $\Delta x$ is constant, ensuring second-order accuracy for central differences.
 
 **Periodic Domains:**
 
 When `periodic=True`, the domain satisfies:
-\[
+$$
 u(x_0, t) = u(x_1, t)
-\]
+$$
 
 This is enforced in finite-difference stencils by wrapping indices (e.g., `u[-1]` wraps to `u[0]`).
 
@@ -249,15 +251,15 @@ def evaluate(self, domain: Domain1D) -> np.ndarray:
 
 ### Mathematical Interpretation
 
-Given an initial condition \(u(x, 0) = u_0(x)\), we evaluate it at each grid point:
-\[
+Given an initial condition $u(x, 0) = u_0(x)$, we evaluate it at each grid point:
+$$
 \mathbf{u}(0) = [u_0(x_0), u_0(x_1), \ldots, u_0(x_{N-1})]^T
-\]
+$$
 
-**Example:** For \(u_0(x) = \sin(x)\) on grid points \(x_i\):
-\[
+**Example:** For $u_0(x) = \sin(x)$ on grid points $x_i$:
+$$
 u_i(0) = \sin(x_i), \quad i = 0, 1, \ldots, N-1
-\]
+$$
 
 ### Safety: Expression Evaluation
 
@@ -301,10 +303,10 @@ def initial_full(self, t0: float = 0.0) -> Array:
 ```
 
 **Mathematical Result:** For second-order problems, the initial state vector is doubled:
-\[
+$$
 \mathbf{y}(0) = \begin{bmatrix} \mathbf{u}(0) \\ \mathbf{v}(0) \end{bmatrix}
-\]
-where \(\mathbf{v}(0) = \frac{\partial \mathbf{u}}{\partial t}(0)\).
+$$
+where $\mathbf{v}(0) = \frac{\partial \mathbf{u}}{\partial t}(0)$.
 
 ---
 
@@ -315,9 +317,9 @@ Boundary conditions are applied at each time step to enforce constraints on the 
 ### Dirichlet Boundary Conditions
 
 **Mathematical Form:**
-\[
+$$
 u(x_0, t) = g_0(t) \quad \text{(left)}, \quad u(x_1, t) = g_1(t) \quad \text{(right)}
-\]
+$$
 
 **Implementation:**
 
@@ -340,16 +342,16 @@ class DirichletLeft(BoundaryCondition):
 2. Directly assign to boundary grid point: `u_full[0] = g_0(t)`
 
 **Mathematical Result:**
-\[
+$$
 u_0(t) = g_0(t), \quad u_{N-1}(t) = g_1(t)
-\]
+$$
 
 ### Neumann Boundary Conditions
 
 **Mathematical Form:**
-\[
+$$
 \frac{\partial u}{\partial x}(x_0, t) = q_0(t) \quad \text{(left)}, \quad \frac{\partial u}{\partial x}(x_1, t) = q_1(t) \quad \text{(right)}
-\]
+$$
 
 **Implementation Strategy:**
 
@@ -371,33 +373,33 @@ def apply_neumann_ghosts(u_full, bc_left, bc_right, t, domain):
 **Mathematical Derivation:**
 
 Using a first-order forward difference at the left boundary:
-\[
+$$
 \frac{u_1 - u_0}{\Delta x} \approx \frac{\partial u}{\partial x}(x_0, t) = q_0(t)
-\]
+$$
 
 Rearranging:
-\[
+$$
 u_0 = u_1 - \Delta x \cdot q_0(t)
-\]
+$$
 
 Similarly, at the right boundary using a backward difference:
-\[
+$$
 \frac{u_{N-1} - u_{N-2}}{\Delta x} \approx \frac{\partial u}{\partial x}(x_1, t) = q_1(t)
-\]
+$$
 
 Rearranging:
-\[
+$$
 u_{N-1} = u_{N-2} + \Delta x \cdot q_1(t)
-\]
+$$
 
 **Accuracy:** This is first-order accurate. Higher-order approximations are possible but require more interior points.
 
 ### Robin Boundary Conditions
 
 **Mathematical Form:**
-\[
+$$
 a \cdot u(x_0, t) + b \cdot \frac{\partial u}{\partial x}(x_0, t) = c(t) \quad \text{(left)}
-\]
+$$
 
 This is a **linear combination** of Dirichlet and Neumann conditions.
 
@@ -426,62 +428,62 @@ class RobinLeft(BoundaryCondition):
 **Mathematical Derivation:**
 
 Starting from the Robin condition:
-\[
+$$
 a \cdot u_0 + b \cdot \frac{\partial u}{\partial x}(x_0, t) = c(t)
-\]
+$$
 
 Approximating the derivative with a forward difference:
-\[
+$$
 \frac{\partial u}{\partial x}(x_0, t) \approx \frac{u_1 - u_0}{\Delta x}
-\]
+$$
 
 Substituting:
-\[
+$$
 a \cdot u_0 + b \cdot \frac{u_1 - u_0}{\Delta x} = c(t)
-\]
+$$
 
 Rearranging:
-\[
+$$
 \left(a - \frac{b}{\Delta x}\right) u_0 = c(t) - \frac{b}{\Delta x} u_1
-\]
+$$
 
-Solving for \(u_0\):
-\[
+Solving for $u_0$:
+$$
 u_0 = \frac{c(t) - \frac{b}{\Delta x} u_1}{a - \frac{b}{\Delta x}}
-\]
+$$
 
 **Special Cases:**
-- **Dirichlet** (\(b = 0\)): \(u_0 = \frac{c(t)}{a}\)
-- **Neumann** (\(a = 0\)): \(u_0 = u_1 - \Delta x \cdot \frac{c(t)}{b}\)
+- **Dirichlet** ($b = 0$): $u_0 = \frac{c(t)}{a}$
+- **Neumann** ($a = 0$): $u_0 = u_1 - \Delta x \cdot \frac{c(t)}{b}$
 
 **Right Boundary:**
 
 For the right boundary, we use a backward difference:
-\[
+$$
 \frac{\partial u}{\partial x}(x_1, t) \approx \frac{u_{N-1} - u_{N-2}}{\Delta x}
-\]
+$$
 
 The Robin condition becomes:
-\[
+$$
 a \cdot u_{N-1} + b \cdot \frac{u_{N-1} - u_{N-2}}{\Delta x} = c(t)
-\]
+$$
 
 Rearranging:
-\[
+$$
 \left(a + \frac{b}{\Delta x}\right) u_{N-1} = c(t) + \frac{b}{\Delta x} u_{N-2}
-\]
+$$
 
 Solving:
-\[
+$$
 u_{N-1} = \frac{c(t) + \frac{b}{\Delta x} u_{N-2}}{a + \frac{b}{\Delta x}}
-\]
+$$
 
 ### Periodic Boundary Conditions
 
 **Mathematical Form:**
-\[
+$$
 u(x_0, t) = u(x_1, t), \quad \frac{\partial u}{\partial x}(x_0, t) = \frac{\partial u}{\partial x}(x_1, t)
-\]
+$$
 
 **Implementation:**
 
@@ -500,7 +502,7 @@ du[0] = (u[1] - u[-2]) / (2.0 * dx)  # Wrap to penultimate point
 du[-1] = du[0]  # Same as left boundary
 ```
 
-**Mathematical Result:** The grid points satisfy \(u_0 = u_{N-1}\) implicitly through the stencil construction.
+**Mathematical Result:** The grid points satisfy $u_0 = u_{N-1}$ implicitly through the stencil construction.
 
 ### Boundary Condition Application Order
 
@@ -520,11 +522,11 @@ Spatial operators compute derivatives using **finite difference methods**. The l
 ### First-Order Derivative: `_central_first_derivative()`
 
 **Mathematical Formula (Central Difference):**
-\[
+$$
 \frac{\partial u}{\partial x}(x_i) \approx \frac{u_{i+1} - u_{i-1}}{2\Delta x}
-\]
+$$
 
-**Accuracy:** \(O(\Delta x^2)\) (second-order)
+**Accuracy:** $O(\Delta x^2)$ (second-order)
 
 **Implementation:**
 
@@ -548,11 +550,11 @@ def _central_first_derivative(u: Array, dx: float, periodic: bool) -> Array:
 ### Second-Order Derivative: `_central_second_derivative()`
 
 **Mathematical Formula (Central Difference):**
-\[
+$$
 \frac{\partial^2 u}{\partial x^2}(x_i) \approx \frac{u_{i+1} - 2u_i + u_{i-1}}{\Delta x^2}
-\]
+$$
 
-**Accuracy:** \(O(\Delta x^2)\) (second-order)
+**Accuracy:** $O(\Delta x^2)$ (second-order)
 
 **Implementation:**
 
@@ -570,18 +572,18 @@ def _central_second_derivative(u: Array, dx: float, periodic: bool) -> Array:
 ```
 
 **Derivation:** The second derivative is the derivative of the first derivative:
-\[
+$$
 \frac{\partial^2 u}{\partial x^2} = \frac{\partial}{\partial x}\left(\frac{\partial u}{\partial x}\right)
-\]
+$$
 
 ### Third-Order Derivative: `_central_third_derivative()`
 
 **Mathematical Formula (Central Difference):**
-\[
+$$
 \frac{\partial^3 u}{\partial x^3}(x_i) \approx \frac{u_{i+2} - 2u_{i+1} + 2u_{i-1} - u_{i-2}}{2\Delta x^3}
-\]
+$$
 
-**Accuracy:** \(O(\Delta x^2)\) (second-order)
+**Accuracy:** $O(\Delta x^2)$ (second-order)
 
 **Implementation:**
 
@@ -608,9 +610,9 @@ def _central_third_derivative(u: Array, dx: float, periodic: bool) -> Array:
 #### Diffusion Operator
 
 **Mathematical Form:**
-\[
+$$
 L[u] = \nu \frac{\partial^2 u}{\partial x^2}
-\]
+$$
 
 **Implementation:**
 
@@ -628,9 +630,9 @@ class Diffusion(Operator):
 #### Advection Operator
 
 **Mathematical Form:**
-\[
+$$
 L[u] = -a \frac{\partial u}{\partial x}
-\]
+$$
 
 **Implementation:**
 
@@ -648,10 +650,10 @@ class Advection(Operator):
 #### ExpressionOperator
 
 **Mathematical Form:**
-\[
+$$
 L[u] = f(u, u_x, u_{xx}, u_{xxx}, x, t, \mathbf{p})
-\]
-where \(\mathbf{p}\) are parameters.
+$$
+where $\mathbf{p}$ are parameters.
 
 **Implementation:**
 
@@ -689,33 +691,33 @@ class ExpressionOperator(Operator):
 
 The library supports two types of PDE problems:
 
-1. **First-order in time**: \(u_t = L[u]\)
-2. **Second-order in time**: \(u_{tt} = L[u] + M[u_t]\)
+1. **First-order in time**: $u_t = L[u]$
+2. **Second-order in time**: $u_{tt} = L[u] + M[u_t]$
 
 ### First-Order Problems: `PDEProblem`
 
 **Mathematical Form:**
-\[
+$$
 \frac{\partial u}{\partial t} = L[u]
-\]
+$$
 
 After spatial discretization:
-\[
+$$
 \frac{d\mathbf{u}}{dt} = \mathbf{F}(\mathbf{u}, t)
-\]
-where \(\mathbf{F}\) applies the spatial operator \(L\) at each grid point.
+$$
+where $\mathbf{F}$ applies the spatial operator $L$ at each grid point.
 
 **State Vector:**
 
 For **periodic** domains:
-\[
+$$
 \mathbf{u} = [u_0, u_1, \ldots, u_{N-1}]^T
-\]
+$$
 
 For **non-periodic** domains (interior only):
-\[
+$$
 \mathbf{u} = [u_1, u_2, \ldots, u_{N-2}]^T
-\]
+$$
 Boundary values are reconstructed when needed.
 
 **Right-Hand Side Function:**
@@ -772,37 +774,37 @@ def solve(self, t_span, t_eval=None, method="RK45", **kwargs):
 ```
 
 **Mathematical Result:** `solve_ivp` integrates the ODE system:
-\[
+$$
 \mathbf{u}(t) = \mathbf{u}(0) + \int_0^t \mathbf{F}(\mathbf{u}(\tau), \tau) \, d\tau
-\]
+$$
 
 ### Second-Order Problems: `SecondOrderPDEProblem`
 
 **Mathematical Form:**
-\[
+$$
 \frac{\partial^2 u}{\partial t^2} = L[u] + M\left[\frac{\partial u}{\partial t}\right]
-\]
+$$
 
 **Conversion to First-Order System:**
 
-Introduce \(v = \frac{\partial u}{\partial t}\):
-\[
+Introduce $v = \frac{\partial u}{\partial t}$:
+$$
 \frac{\partial u}{\partial t} = v
-\]
-\[
+$$
+$$
 \frac{\partial v}{\partial t} = L[u] + M[v]
-\]
+$$
 
 **State Vector:**
 
-\[
+$$
 \mathbf{y} = \begin{bmatrix} \mathbf{u} \\ \mathbf{v} \end{bmatrix}
-\]
+$$
 
 For periodic domains:
-\[
+$$
 \mathbf{y} = [u_0, u_1, \ldots, u_{N-1}, v_0, v_1, \ldots, v_{N-1}]^T
-\]
+$$
 
 **Right-Hand Side Function:**
 
@@ -827,9 +829,9 @@ def _rhs_periodic(self, t: float, y: Array) -> Array:
 
 **Mathematical Result:**
 
-\[
+$$
 \frac{d\mathbf{y}}{dt} = \begin{bmatrix} \mathbf{v} \\ L[\mathbf{u}] + M[\mathbf{v}] \end{bmatrix}
-\]
+$$
 
 **Initial Conditions:**
 
@@ -841,17 +843,17 @@ def initial_full(self, t0: float = 0.0) -> Array:
 ```
 
 **Mathematical Result:**
-\[
+$$
 \mathbf{y}(0) = \begin{bmatrix} \mathbf{u}(0) \\ \mathbf{v}(0) \end{bmatrix} = \begin{bmatrix} \mathbf{u}_0 \\ \mathbf{v}_0 \end{bmatrix}
-\]
+$$
 
 ### Higher-Order Spatial Derivatives
 
-The library supports up to **third-order spatial derivatives** (\(u_{xxx}\)) through the `ExpressionOperator`.
+The library supports up to **third-order spatial derivatives** ($u_{xxx}$) through the `ExpressionOperator`.
 
 **Usage Example:**
 
-For the KdV equation: \(u_t = -u u_x - \alpha u_{xxx}\)
+For the KdV equation: $u_t = -u u_x - \alpha u_{xxx}$
 
 ```python
 op = ExpressionOperator(
@@ -863,11 +865,11 @@ op = ExpressionOperator(
 **Mathematical Implementation:**
 
 The third derivative is computed using the central difference stencil:
-\[
+$$
 \frac{\partial^3 u}{\partial x^3}(x_i) \approx \frac{u_{i+2} - 2u_{i+1} + 2u_{i-1} - u_{i-2}}{2\Delta x^3}
-\]
+$$
 
-This is second-order accurate: \(O(\Delta x^2)\).
+This is second-order accurate: $O(\Delta x^2)$.
 
 **Extensibility:** To add fourth-order or higher derivatives, extend `_central_third_derivative()` with additional stencils and update `ExpressionOperator` to include new symbols.
 
@@ -888,9 +890,9 @@ The library uses `scipy.integrate.solve_ivp`, which supports multiple methods:
 **Adaptive Time Stepping:**
 
 The solver automatically adjusts the time step to maintain error below:
-\[
+$$
 \text{error} < \text{rtol} \cdot |\mathbf{u}| + \text{atol}
-\]
+$$
 
 where `rtol` (relative tolerance) and `atol` (absolute tolerance) are user-specified.
 
@@ -904,7 +906,7 @@ The plotting module provides utilities for visualizing 1D PDE solutions. It uses
 
 #### 1. Single Snapshot: `plot_1d()`
 
-**Purpose:** Plot \(u(x)\) at a single time.
+**Purpose:** Plot $u(x)$ at a single time.
 
 **Implementation:**
 
@@ -924,11 +926,11 @@ def plot_1d(x: np.ndarray, u: np.ndarray, title: Optional[str] = None, savepath:
     plt.close(fig)
 ```
 
-**Mathematical Representation:** Plots the function \(u(x, t_k)\) for a fixed time \(t_k\).
+**Mathematical Representation:** Plots the function $u(x, t_k)$ for a fixed time $t_k$.
 
 #### 2. Time Series: `plot_1d_time_series()`
 
-**Purpose:** Generate multiple plots showing \(u(x, t)\) at different times.
+**Purpose:** Generate multiple plots showing $u(x, t)$ at different times.
 
 **Implementation:**
 
@@ -948,9 +950,9 @@ def plot_1d_time_series(x, solutions, times, prefix="solution1d", out_dir=None):
 ```
 
 **Mathematical Representation:** Generates a sequence of plots:
-\[
+$$
 \{u(x, t_0), u(x, t_1), \ldots, u(x, t_{N_t-1})\}
-\]
+$$
 
 #### 3. Combined Plot: `plot_1d_combined()`
 
@@ -983,14 +985,14 @@ def plot_1d_combined(x, solutions, times, title="Combined 1D time series", savep
 ```
 
 **Mathematical Representation:** Overlays multiple time slices:
-\[
+$$
 \{u(x, t_{i_0}), u(x, t_{i_1}), \ldots, u(x, t_{i_{n-1}})\}
-\]
+$$
 on a single axes.
 
 #### 4. Heatmap: `plot_xt_heatmap()`
 
-**Purpose:** Visualize \(u(x, t)\) as a 2D color map.
+**Purpose:** Visualize $u(x, t)$ as a 2D color map.
 
 **Implementation:**
 
@@ -1014,10 +1016,10 @@ def plot_xt_heatmap(x, t, solutions, title="u(x,t) heatmap", savepath=None):
     plt.close(fig)
 ```
 
-**Mathematical Representation:** Creates a 2D visualization of the function \(u(x, t)\) where:
-- **x-axis**: Time \(t\)
-- **y-axis**: Space \(x\)
-- **Color**: Value \(u(x, t)\)
+**Mathematical Representation:** Creates a 2D visualization of the function $u(x, t)$ where:
+- **x-axis**: Time $t$
+- **y-axis**: Space $x$
+- **Color**: Value $u(x, t)$
 
 ### Integration with Problem Classes
 
