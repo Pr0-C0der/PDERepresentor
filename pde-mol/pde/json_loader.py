@@ -152,18 +152,21 @@ def _parse_operator(op_cfg: JsonDict) -> Operator:
         if "nu" not in op_cfg:
             raise ValueError("Diffusion operator requires 'nu' coefficient.")
         nu = op_cfg["nu"]
-        return Diffusion(nu)
+        scheme = op_cfg.get("scheme", "central")
+        return Diffusion(nu=nu, scheme=scheme)
 
     if op_type == "advection":
         if "a" not in op_cfg:
             raise ValueError("Advection operator requires 'a' coefficient.")
         a = op_cfg["a"]
-        return Advection(a)
+        scheme = op_cfg.get("scheme", "upwind_first")
+        return Advection(a=a, scheme=scheme)
 
     if op_type in ("expression", "expression_operator"):
         expr = op_cfg["expr"]
         params = op_cfg.get("params", {})
-        return ExpressionOperator(expr_string=expr, params=params)
+        schemes = op_cfg.get("schemes", {})
+        return ExpressionOperator(expr_string=expr, params=params, schemes=schemes)
 
     raise ValueError(f"Unknown operator type {op_type!r}.")
 
@@ -233,15 +236,15 @@ def build_problem_from_dict(config: JsonDict):
         ic_cfg = config["initial_condition"]
         ic = _parse_initial_condition(ic_cfg)
         operators = _parse_operators(config)
-        
-        problem = PDEProblem(
-            domain=domain,
-            operators=operators,
-            ic=ic,
-            bc_left=bc_left,
-            bc_right=bc_right,
-        )
-        return problem
+
+    problem = PDEProblem(
+        domain=domain,
+        operators=operators,
+        ic=ic,
+        bc_left=bc_left,
+        bc_right=bc_right,
+    )
+    return problem
 
 
 def load_from_json(path: str | Path):

@@ -16,6 +16,10 @@
       "expr": "-u*ux - alpha*uxxx",
       "params": {
         "alpha": 0.01
+      },
+      "schemes": {
+        "ux": "upwind_second",
+        "uxxx": "central"
       }
     }
   ],
@@ -30,10 +34,7 @@
   "visualization": {
     "enable": true,
     "type": "1d",
-    "save_dir": "kdv1d",
-    "plot_initial": true,
-    "plot_final": true,
-    "plot_time_series": true
+    "save_dir": "kdv1d"
   }
 }
 

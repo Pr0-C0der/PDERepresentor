@@ -27,6 +27,12 @@ from .operators import (
     ExpressionOperator,
     sum_operators,
 )
+from .spatial_discretization import (
+    DiscretizationScheme,
+    first_derivative,
+    second_derivative,
+    third_derivative,
+)
 from .problem import PDEProblem, SecondOrderPDEProblem
 
 # Dataset generation (optional, requires PyTorch)
@@ -54,6 +60,10 @@ __all__ = [
     "sum_operators",
     "PDEProblem",
     "SecondOrderPDEProblem",
+    "DiscretizationScheme",
+    "first_derivative",
+    "second_derivative",
+    "third_derivative",
 ]
 
 if _DATASET_AVAILABLE:

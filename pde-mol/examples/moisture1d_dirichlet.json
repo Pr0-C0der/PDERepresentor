@@ -23,7 +23,8 @@
     "operators": [
         {
             "type": "diffusion",
-            "nu": 0.1
+            "nu": 0.1,
+            "scheme": "central"
         }
     ],
     "time": {
@@ -37,9 +38,6 @@
     "visualization": {
         "enable": true,
         "type": "1d",
-        "save_dir": "moisture_diffusion_dirichlet",
-        "plot_initial": true,
-        "plot_final": true,
-        "plot_time_series": true
+        "save_dir": "moisture_diffusion_dirichlet"
     }
 }

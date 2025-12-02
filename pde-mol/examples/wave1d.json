@@ -17,7 +17,8 @@
     "spatial_operators": [
         {
             "type": "diffusion",
-            "nu": 1.0
+            "nu": 1.0,
+            "scheme": "central"
         }
     ],
     "time": {
@@ -31,9 +32,6 @@
     "visualization": {
         "enable": true,
         "type": "1d",
-        "save_dir": "wave1d",
-        "plot_initial": true,
-        "plot_final": true,
-        "plot_time_series": true
+        "save_dir": "wave1d"
     }
 }

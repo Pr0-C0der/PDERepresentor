@@ -24,6 +24,10 @@
             "expr": "-u*ux + nu*uxx",
             "params": {
                 "nu": 0.1
+            },
+            "schemes": {
+                "ux": "upwind_second",
+                "uxx": "central"
             }
         }
     ],
@@ -38,9 +42,6 @@
     "visualization": {
         "enable": true,
         "type": "1d",
-        "save_dir": "burgers1d",
-        "plot_initial": true,
-        "plot_final": true,
-        "plot_time_series": true
+        "save_dir": "burgers1d"
     }
 }

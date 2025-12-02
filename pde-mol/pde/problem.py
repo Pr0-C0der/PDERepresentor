@@ -183,8 +183,8 @@ class PDEProblem:
         t0, _ = t_span
 
         if self.domain.periodic:
-            y0 = self.initial_full(t0)
-            fun = self._rhs_periodic
+                y0 = self.initial_full(t0)
+                fun = self._rhs_periodic
         else:
             y0 = self.initial_interior(t0)
             fun = self._rhs_nonperiodic
@@ -530,22 +530,22 @@ class SecondOrderPDEProblem:
                 u_full_solutions[:, 0],
                 title="Initial solution u(x,0)",
                 savepath=os.path.join(base_dir, "solution1d_initial.png"),
-            )
+                )
             plot_1d(
                 x,
                 u_full_solutions[:, -1],
                 title="Final solution u(x,t)",
                 savepath=os.path.join(base_dir, "solution1d_final.png"),
-            )
+                )
             
             # Time series
             plot_1d_time_series(
                 x,
                 u_full_solutions,
-                result.t,
+                    result.t,
                 prefix="solution1d",
-                out_dir=base_dir,
-            )
-        
+                    out_dir=base_dir,
+                )
+
         return result
 

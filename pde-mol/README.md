@@ -58,7 +58,7 @@ what it does. For detailed signatures and parameter types, see the docstrings.
 #### `domain.py`
 
 - **`Domain1D(x0, x1, nx, periodic=False)`**  
-  Structured 1D domain on \([x_0, x_1]\) with `nx` grid points.  
+  Structured 1D domain on $[x_0, x_1]$ with `nx` grid points.  
   - **Inputs**: floats `x0, x1`; int `nx`; bool `periodic`.  
   - **Properties**: `x` (1D NumPy array of length `nx`), `dx` (float spacing).  
   - **Methods**: `to_dict() -> dict`, `from_dict(d: dict) -> Domain1D`.
@@ -91,17 +91,17 @@ what it does. For detailed signatures and parameter types, see the docstrings.
   Marker BC for periodic domains. `apply_to_full` is a no-op; periodicity is handled by operators.
 
 - **`NeumannLeft(derivative_value=None, expr=None)` / `NeumannRight(...)`**  
-  Neumann conditions specifying normal derivative \(u_x\) at left/right boundary.  
+  Neumann conditions specifying normal derivative $u_x$ at left/right boundary.  
   - `derivative_value`: constant flux, or  
   - `expr`: string in `t` and `np`.  
-  - `_evaluate_flux(t) -> float` returns \(q(t)\).  
+  - `_evaluate_flux(t) -> float` returns $q(t)$.  
   - `apply_to_full` does not modify `u_full` directly (enforced via helper).
 
 - **`RobinLeft(a=None, b=None, c=None, c_expr=None, h=None, u_env=None)` / `RobinRight(...)`**  
-  General Robin boundary condition of the form \(a \cdot u + b \cdot u_x = c(t)\) at left/right boundary.  
+  General Robin boundary condition of the form $a \cdot u + b \cdot u_x = c(t)$ at left/right boundary.  
   - **General form**: `a`, `b` (coefficients), `c` (constant) or `c_expr` (time-dependent expression in `t` and `np`).  
   - **Backward compatibility**: `h` (heat/mass transfer coefficient) and `u_env` (environmental value)  
-    converts to \(h \cdot u + u_x = h \cdot u_{env}\) (equivalent to \(u_x = -h \cdot (u - u_{env})\)).  
+    converts to $h \cdot u + u_x = h \cdot u_{env}$ (equivalent to $u_x = -h \cdot (u - u_{env})$).  
   - Uses one-sided first-order finite differences to enforce the condition.  
   - `apply_to_full(u_full, t, domain)` modifies `u_full[0]` or `u_full[-1]` in-place.
 
@@ -113,37 +113,63 @@ what it does. For detailed signatures and parameter types, see the docstrings.
   - **Inputs**: solution array `u_full`, optional left/right BCs, time `t`, `Domain1D`.  
   - **Output**: modifies `u_full` in-place; returns `None`.
 
+#### `spatial_discretization.py`
+
+- **`DiscretizationScheme` (enum)**  
+  Enumeration of available discretization schemes:
+  - `CENTRAL`: Second-order central differences (default, good for diffusion)
+  - `UPWIND_FIRST`: First-order upwind (stable for advection, less accurate)
+  - `UPWIND_SECOND`: Second-order upwind (stable and more accurate for advection)
+  - `BACKWARD`: First-order backward differences
+  - `FORWARD`: First-order forward differences
+
+- **`first_derivative(u, dx, domain, scheme, velocity=None) -> array`**  
+  Compute first derivative using specified scheme.  
+  - For upwind schemes, `velocity` array is required to determine upwind direction.
+  - Returns derivative approximation with same shape as `u`.
+
+- **`second_derivative(u, dx, domain, scheme) -> array`**  
+  Compute second derivative (currently only `CENTRAL` is supported).
+
+- **`third_derivative(u, dx, domain, scheme) -> array`**  
+  Compute third derivative (currently only `CENTRAL` is supported).
+
+**Key Feature**: Different discretization schemes can be applied to different terms in the same PDE for optimal accuracy and stability. For example, use upwind schemes for advection terms and central differences for diffusion terms.
+
 #### `operators.py`
 
 - **`Operator` (base class)**  
   - Method: `apply(u_full: array, domain, t: float) -> array` – spatial RHS contribution.
 
-- **1D helper functions**:  
-  - `_central_first_derivative(u, dx, periodic) -> array` – 1D central first derivative.  
-  - `_central_second_derivative(u, dx, periodic) -> array` – 1D central second derivative.  
-  - `_eval_coeff(coeff, x, t) -> array` – evaluate scalar/callable/string coefficient.
-
-- **`Diffusion(nu)`**  
+- **`Diffusion(nu, scheme="central")`**  
   1D diffusion operator: returns `nu(x,t) * u_xx`.  
   - `nu`: scalar, callable `nu(x,t)`, or string expression in `x,t`.  
+  - `scheme`: discretization scheme (default: `"central"`).  
   - `apply(u_full, domain: Domain1D, t) -> array` of same shape as `u_full`.
 
-- **`Advection(a)`**  
+- **`Advection(a, scheme="upwind_first")`**  
   1D advection operator: returns `-a(x,t) * u_x`.  
   - `a`: scalar, callable `a(x,t)`, or string expression in `x,t`.  
+  - `scheme`: discretization scheme. Options:
+    - `"upwind_first"` (default): First-order upwind, stable for advection
+    - `"upwind_second"`: Second-order upwind, more accurate while maintaining stability
+    - `"central"`: Second-order central (may cause oscillations for sharp gradients)
   - `apply(u_full, domain: Domain1D, t) -> array`.
 
-- **`ExpressionOperator(expr_string, params=None)`**  
-  1D expression operator in terms of `(u, ux, uxx, x, t, params)`.  
+- **`ExpressionOperator(expr_string, params=None, schemes=None)`**  
+  1D expression operator in terms of `(u, ux, uxx, uxxx, x, t, params)`.  
   - `expr_string`: SymPy expression string (e.g. `"-u*ux + nu*uxx"`).  
   - `params`: dict of parameter names → values.  
+  - `schemes`: dict mapping derivative names to schemes, e.g. `{"ux": "upwind_second", "uxx": "central"}`.  
+    - Keys: `"ux"`, `"uxx"`, `"uxxx"`  
+    - Values: scheme names (default: `"central"` for all)  
   - Internally: parses with `sympy.sympify`, compiles with `sympy.lambdify`.  
   - `apply(u_full, domain: Domain1D, t) -> array`.
 
 - **`sum_operators(ops: Iterable[Operator]) -> Operator`**  
   Returns an `Operator` whose `apply` gives the sum of `apply` for all `ops`.
 
-**Note**: `ExpressionOperator` now supports third-order spatial derivatives via the `uxxx` symbol.
+**Note**: `ExpressionOperator` now supports third-order spatial derivatives via the `uxxx` symbol and configurable discretization schemes per derivative type.
 
 #### `sparse_ops.py`
 
@@ -206,7 +232,8 @@ Exports the main public API:
 - `InitialCondition`  
 - `BoundaryCondition`, `DirichletLeft`, `DirichletRight`, `Periodic`, `NeumannLeft`, `NeumannRight`, `RobinLeft`, `RobinRight`  
 - `Operator`, `Diffusion`, `Advection`, `ExpressionOperator`, `sum_operators`  
-- `PDEProblem`, `SecondOrderPDEProblem`
+- `PDEProblem`, `SecondOrderPDEProblem`  
+- `DiscretizationScheme`, `first_derivative`, `second_derivative`, `third_derivative`
 
 #### `plotting.py`
 
@@ -224,7 +251,7 @@ Exports the main public API:
   only a subset of evenly spaced times is plotted.
 
 - **`plot_xt_heatmap(x, times, solutions, title=None, savepath=None)`**  
-  Creates a 2D heatmap of \(u(x,t)\) with `x` on the x-axis and `t` on the y-axis.
+  Creates a 2D heatmap of $u(x,t)$ with `x` on the x-axis and `t` on the y-axis.
   Useful for visualizing the full spatiotemporal evolution of 1D solutions.
   `solutions` must be a 2D array of shape `(nx, nt)`.
 
@@ -328,7 +355,7 @@ For `"values"`, `values` must be an array matching the grid.
     "u_env": 0.2
   }
   ```
-  This is equivalent to \(h \cdot u + u_x = h \cdot u_{env}\) (or \(u_x = -h \cdot (u - u_{env})\)).
+  This is equivalent to $h \cdot u + u_x = h \cdot u_{env}$ (or $u_x = -h \cdot (u - u_{env})$).
 
 #### `operators`
 
@@ -336,12 +363,25 @@ For first-order problems (u_t = L[u]):
 
 ```json
 "operators": [
-  { "type": "diffusion", "nu": 0.5 },
-  { "type": "advection", "a": "1.0 + 0.5 * np.cos(x)" },
+  { 
+    "type": "diffusion", 
+    "nu": 0.5,
+    "scheme": "central"
+  },
+  { 
+    "type": "advection", 
+    "a": "1.0 + 0.5 * np.cos(x)",
+    "scheme": "upwind_second"
+  },
   {
     "type": "expression",
     "expr": "-u*ux + nu*uxx - alpha*uxxx",
-    "params": { "nu": 0.1, "alpha": 0.01 }
+    "params": { "nu": 0.1, "alpha": 0.01 },
+    "schemes": {
+      "ux": "upwind_second",
+      "uxx": "central",
+      "uxxx": "central"
+    }
   }
 ]
 ```
@@ -359,13 +399,15 @@ For second-order problems (u_tt = L[u] + M[u_t]):
 
 Supported operator entries:
 
-- `"diffusion"`: `{"type": "diffusion", "nu": ...}`
-- `"advection"`: `{"type": "advection", "a": ...}`
+- `"diffusion"`: `{"type": "diffusion", "nu": ..., "scheme": "central"}` (optional `scheme`, default: `"central"`)
+- `"advection"`: `{"type": "advection", "a": ..., "scheme": "upwind_first"}` (optional `scheme`, default: `"upwind_first"`)
+  - Scheme options: `"upwind_first"`, `"upwind_second"`, `"central"`, `"backward"`, `"forward"`
 - `"expression"` / `"expression_operator"`:
   - `expr` in variables `u, ux, uxx, uxxx, x, t` plus optional `params`.
+  - Optional `schemes` dict: `{"ux": "upwind_second", "uxx": "central", "uxxx": "central"}`
   - Example with third-order derivative: `"expr": "-u*ux - alpha*uxxx"` (KdV-type)
 
-**Example: Mixed-order equation in JSON** \(u_t + u_{tt} = u_x + u_{xx} + u + 5\):
+**Example: Mixed-order equation in JSON** $u_t + u_{tt} = u_x + u_{xx} + u + 5$:
 
 ```json
 {
@@ -453,7 +495,7 @@ When enabled, automatically generates:
 - Initial and final solution plots
 - Time series plots (individual frames)
 - Combined plot showing multiple time slices
-- Heatmap of \(u(x,t)\) with `x` on x-axis and `t` on y-axis
+- Heatmap of $u(x,t)$ with `x` on x-axis and `t` on y-axis
 
 ---
 
@@ -483,7 +525,7 @@ Use `--no-output` to suppress printing and rely on the exit code only.
 
 ### Python API quickstart
 
-**1D heat equation** \(u_t = \nu u_{xx}\) on \([0, 2\pi]\):
+**1D heat equation** $u_t = \nu u_{xx}$ on $[0, 2\pi]$:
 
 ```python
 import numpy as np
@@ -498,7 +540,7 @@ sol = problem.solve((0.0, 1.0), t_eval=np.linspace(0.0, 1.0, 6))
 u_final = sol.y[:, -1]
 ```
 
-**Wave equation** \(u_{tt} = c^2 u_{xx}\) on \([0, 2\pi]\):
+**Wave equation** $u_{tt} = c^2 u_{xx}$ on $[0, 2\pi]$:
 
 ```python
 from pde import SecondOrderPDEProblem
@@ -518,7 +560,7 @@ sol = wave_problem.solve((0.0, 2.0), t_eval=np.linspace(0.0, 2.0, 100))
 u_final = sol.u[:, -1]  # Extract u component
 ```
 
-**KdV equation** \(u_t = -u u_x - \alpha u_{xxx}\) (with third-order derivative):
+**KdV equation** $u_t = -u u_x - \alpha u_{xxx}$ (with third-order derivative):
 
 ```python
 from pde.operators import ExpressionOperator
@@ -535,9 +577,9 @@ sol = problem.solve((0.0, 0.5), t_eval=np.linspace(0.0, 0.5, 100))
 u_final = sol.y[:, -1]
 ```
 
-**Mixed-order equation** \(u_t + u_{tt} = u_x + u_{xx} + u + 5\):
+**Mixed-order equation** $u_t + u_{tt} = u_x + u_{xx} + u + 5$:
 
-This equation contains both first-order and second-order time derivatives. Rearranging: \(u_{tt} = -u_t + u_x + u_{xx} + u + 5\)
+This equation contains both first-order and second-order time derivatives. Rearranging: $u_{tt} = -u_t + u_x + u_{xx} + u + 5$
 
 ```python
 from pde import SecondOrderPDEProblem, ExpressionOperator
@@ -569,7 +611,7 @@ sol = problem.solve((0.0, 1.0), t_eval=np.linspace(0.0, 1.0, 100), method="BDF")
 u_final = sol.u[:, -1]
 ```
 
-**Advection-diffusion-reaction equation** \(u_t = -a u_x + \nu u_{xx} + r u (1 - u)\):
+**Advection-diffusion-reaction equation** $u_t = -a u_x + \nu u_{xx} + r u (1 - u)$:
 
 ```python
 from pde.operators import Advection, Diffusion, ExpressionOperator, sum_operators
@@ -577,9 +619,9 @@ from pde.operators import Advection, Diffusion, ExpressionOperator, sum_operator
 dom = Domain1D(0.0, 2*np.pi, 201, periodic=True)
 ic = InitialCondition.from_expression("np.sin(x)")
 
-# Combine multiple operators
-advection = Advection(a=1.0)
-diffusion = Diffusion(nu=0.1)
+# Combine multiple operators with optimal schemes
+advection = Advection(a=1.0, scheme="upwind_second")  # Upwind for stability
+diffusion = Diffusion(nu=0.1, scheme="central")       # Central for accuracy
 reaction = ExpressionOperator(
     expr_string="r*u*(1 - u)",
     params={"r": 0.5}
@@ -593,7 +635,30 @@ sol = problem.solve((0.0, 2.0), t_eval=np.linspace(0.0, 2.0, 100))
 u_final = sol.y[:, -1]
 ```
 
-**Damped wave with source term** \(u_{tt} = c^2 u_{xx} - \gamma u_t + f(x,t)\):
+**Using ExpressionOperator with mixed schemes** (upwind for advection, central for diffusion):
+
+```python
+from pde.operators import ExpressionOperator
+
+dom = Domain1D(0.0, 2*np.pi, 201, periodic=True)
+ic = InitialCondition.from_expression("np.sin(x)")
+
+# Single expression with different schemes for different terms
+op = ExpressionOperator(
+    expr_string="-a*u*ux + nu*uxx + r*u*(1 - u)",
+    params={"a": 1.0, "nu": 0.1, "r": 0.5},
+    schemes={
+        "ux": "upwind_second",  # Upwind for advection term
+        "uxx": "central"        # Central for diffusion term
+    }
+)
+
+problem = PDEProblem(domain=dom, operators=[op], ic=ic)
+sol = problem.solve((0.0, 2.0), t_eval=np.linspace(0.0, 2.0, 100))
+u_final = sol.y[:, -1]
+```
+
+**Damped wave with source term** $u_{tt} = c^2 u_{xx} - \gamma u_t + f(x,t)$:
 
 ```python
 from pde import SecondOrderPDEProblem, ExpressionOperator
@@ -625,7 +690,7 @@ sol = problem.solve((0.0, 2.0), t_eval=np.linspace(0.0, 2.0, 100), method="BDF")
 u_final = sol.u[:, -1]
 ```
 
-**Complex expression with multiple spatial derivatives** \(u_t = u u_x + \nu u_{xx} - \alpha u_{xxx} + \beta u\):
+**Complex expression with multiple spatial derivatives** $u_t = u u_x + \nu u_{xx} - \alpha u_{xxx} + \beta u$:
 
 ```python
 from pde.operators import ExpressionOperator
@@ -644,6 +709,93 @@ u_final = sol.y[:, -1]
 ```
 
 For more details on second-order time derivatives and third-order spatial derivatives, see [SECOND_ORDER_AND_THIRD_ORDER.md](SECOND_ORDER_AND_THIRD_ORDER.md).
+
+---
+
+### Spatial Discretization Schemes
+
+The library supports different discretization schemes optimized for different types of PDE terms. This allows you to use the most appropriate scheme for each term, improving both accuracy and stability.
+
+#### Available Schemes
+
+- **`CENTRAL`**: Second-order central differences
+  - Best for: Diffusion terms, smooth solutions
+  - Accuracy: $O(\Delta x^2)$
+  - May cause oscillations for advection-dominated problems with sharp gradients
+
+- **`UPWIND_FIRST`**: First-order upwind scheme
+  - Best for: Advection terms, stability-critical problems
+  - Accuracy: $O(\Delta x)$
+  - Very stable, prevents oscillations by using information from the upwind direction
+
+- **`UPWIND_SECOND`**: Second-order upwind scheme (ENO-like)
+  - Best for: Advection terms where both accuracy and stability are important
+  - Accuracy: $O(\Delta x^2)$
+  - More accurate than first-order upwind while maintaining stability
+
+- **`BACKWARD`**: First-order backward differences
+- **`FORWARD`**: First-order forward differences
+
+#### Why Use Different Schemes?
+
+Different PDE terms benefit from different discretization methods:
+
+1. **Advection terms** ($u_x$): Use upwind schemes to respect the direction of information flow and prevent oscillations
+2. **Diffusion terms** ($u_{xx}$): Use central differences for optimal accuracy
+3. **Reaction terms**: No spatial discretization needed
+
+#### Usage Examples
+
+**Python API:**
+
+```python
+from pde import Advection, Diffusion, ExpressionOperator
+from pde.spatial_discretization import DiscretizationScheme
+
+# Advection with second-order upwind (recommended)
+advection = Advection(a=1.0, scheme=DiscretizationScheme.UPWIND_SECOND)
+
+# Or use string
+advection = Advection(a=1.0, scheme="upwind_second")
+
+# Expression operator with mixed schemes
+op = ExpressionOperator(
+    expr_string="-u*ux + nu*uxx",
+    params={"nu": 0.1},
+    schemes={
+        "ux": "upwind_second",  # Upwind for advection
+        "uxx": "central"        # Central for diffusion
+    }
+)
+```
+
+**JSON Configuration:**
+
+```json
+{
+  "operators": [
+    {
+      "type": "advection",
+      "a": 1.0,
+      "scheme": "upwind_second"
+    },
+    {
+      "type": "expression",
+      "expr": "-u*ux + nu*uxx",
+      "params": {"nu": 0.1},
+      "schemes": {
+        "ux": "upwind_second",
+        "uxx": "central"
+      }
+    }
+  ]
+}
+```
+
+**Default Schemes:**
+- `Advection`: `"upwind_first"` (stable default)
+- `Diffusion`: `"central"` (optimal for diffusion)
+- `ExpressionOperator`: `"central"` for all derivatives (can be overridden with `schemes` dict)
 
 ---
 

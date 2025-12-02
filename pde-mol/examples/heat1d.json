@@ -21,7 +21,8 @@
   "operators": [
     {
       "type": "diffusion",
-      "nu": 0.5
+      "nu": 0.5,
+      "scheme": "central"
     }
   ],
   "time": {
@@ -35,9 +36,6 @@
   "visualization": {
     "enable": true,
     "type": "1d",
-    "save_dir": "heat1d",
-    "plot_initial": true,
-    "plot_final": true,
-    "plot_time_series": true
+    "save_dir": "heat1d"
   }
 }

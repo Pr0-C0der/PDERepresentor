@@ -14,9 +14,13 @@ This document provides a comprehensive explanation of the code flow, mathematica
 4. [Initial Condition Application](#initial-condition-application)
 5. [Boundary Condition Application](#boundary-condition-application)
 6. [Spatial Operators and Finite Differences](#spatial-operators-and-finite-differences)
+   - [Discretization Schemes](#discretization-schemes)
 7. [PDE Problem Solving](#pde-problem-solving)
 8. [Plotting and Visualization](#plotting-and-visualization)
-9. [Design Principles in Practice](#design-principles-in-practice)
+9. [Dataset Generation](#dataset-generation)
+10. [Command-Line Interface](#command-line-interface)
+11. [Design Principles in Practice](#design-principles-in-practice)
+12. [Summary](#summary)
 
 ---
 
@@ -32,14 +36,15 @@ The `pde-mol` library implements the **Method of Lines (MOL)** for solving parti
 
 Given a PDE of the form:
 $$\frac{\partial u}{\partial t} = L[u]$$
-$$where $L[u]$ is a spatial operator (e.g., $$L[u] = \nu \frac{\partial^2 u}{\partial x^2}$$ for diffusion), we discretize space:
+where $L[u]$ is a spatial operator (e.g., $L[u] = \nu \frac{\partial^2 u}{\partial x^2}$ for diffusion), we discretize space:
 $$x_i = x_0 + i \cdot \Delta x, \quad i = 0, 1, \ldots, N-1$$
-$$where $\Delta x = \frac{x_1 - x_0}{N-1}$$ is the grid spacing.
+where $\Delta x = \frac{x_1 - x_0}{N-1}$ is the grid spacing.
 
 The solution becomes a vector:
 $$\mathbf{u}(t) = [u(x_0, t), u(x_1, t), \ldots, u(x_{N-1}, t)]^T$$
 The PDE becomes a system of ODEs:
-$$\frac{d\mathbf{u}}{dt} = \mathbf{F}(\mathbf{u}, t)$$ where $\mathbf{F}$$ applies the spatial operator $$L$$ at each grid point using finite differences.
+$$\frac{d\mathbf{u}}{dt} = \mathbf{F}(\mathbf{u}, t)$$
+where $\mathbf{F}$ applies the spatial operator $L$ at each grid point using finite differences.
 
 ---
 
@@ -88,7 +93,251 @@ def build_problem_from_dict(config: JsonDict):
 
 **Key Design Decision:** The parser automatically detects second-order problems by checking for `"initial_condition_ut"` in the JSON. This maintains backward compatibility while supporting new features.
 
+**Complete Flow Diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          JSON Configuration File                         │
+│  {                                                                       │
+│    "domain": {...},                                                      │
+│    "initial_condition": {...},                                           │
+│    "boundary_conditions": {...},                                         │
+│    "operators": [...]                                                    │
+│  }                                                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+                              ↓
+                    ┌─────────────────────┐
+                    │ load_from_json()    │
+                    │ - Read file         │
+                    │ - UTF-8 encoding    │
+                    └─────────────────────┘
+                              ↓
+                    ┌─────────────────────┐
+                    │ json.load()         │
+                    │ → Python dict       │
+                    └─────────────────────┘
+                              ↓
+            ┌─────────────────────────────────────┐
+            │ build_problem_from_dict(config)     │
+            └─────────────────────────────────────┘
+                              ↓
+        ┌─────────────────────┴─────────────────────┐
+        │                                           │
+        ↓                                           ↓
+┌───────────────────────┐              ┌──────────────────────────┐
+│ _parse_domain()       │              │ _parse_boundary_         │
+│                       │              │   conditions()           │
+│ Input:                │              │                          │
+│   cfg["domain"]       │              │ Input:                   │
+│   - type: "1d"        │              │   cfg.get("boundary_     │
+│   - x0, x1, nx        │              │     conditions", {})     │
+│   - periodic: bool    │              │                          │
+│                       │              │ Process:                 │
+│ Process:              │              │   ├─→ Extract "left"     │
+│   ├─→ Extract fields  │              │   ├─→ Extract "right"    │
+│   ├─→ Validate type   │              │   └─→ For each side:     │
+│   └─→ Create Domain1D │              │       _parse_bc_one()    │
+│                       │              │                          │
+│ Output:               │              │ _parse_bc_one() details: │
+│   Domain1D(           │              │   ├─→ Extract "type"     │
+│     x0, x1, nx,       │              │   ├─→ Dispatch by type:  │
+│     periodic          │              │   │   - "dirichlet"      │
+│   )                   │              │   │     → DirichletLeft/ │
+│                       │              │   │       Right(value/   │
+│                       │              │   │        expr)         │
+│                       │              │   │   - "neumann"        │
+│                       │              │   │     → NeumannLeft/   │
+│                       │              │   │       Right(deriv_   │
+│                       │              │   │        value/expr)   │
+│                       │              │   │   - "robin"          │
+│                       │              │   │     → RobinLeft/     │
+│                       │              │   │       Right(a,b,c/   │
+│                       │              │   │        h,u_env)      │
+│                       │              │   │   - "periodic"       │
+│                       │              │   │     → Periodic()     │
+│                       │              │   └─→ Validate fields    │
+│                       │              │                          │
+│                       │              │ Output:                  │
+│                       │              │   (bc_left, bc_right)    │
+│                       │              │   or (None, None)        │
+└───────────────────────┘              └──────────────────────────┘
+        │                                           │
+        └─────────────────────┬─────────────────────┘
+                              ↓
+                    ┌─────────────────────────┐
+                    │ Problem Type Detection  │
+                    │                         │
+                    │ Check:                  │
+                    │   "initial_condition_   │
+                    │    ut" in config?       │
+                    └─────────────────────────┘
+                              │
+        ┌─────────────────────┴─────────────────────┐
+        │                                           │
+        ↓                                           ↓
+┌───────────────────────────────┐    ┌──────────────────────────────┐
+│ SECOND-ORDER PROBLEM          │    │ FIRST-ORDER PROBLEM          │
+│ u_tt = L[u] + M[u_t]          │    │ u_t = L[u]                   │
+│                               │    │                              │
+│ ┌─────────────────────────┐   │    │ ┌─────────────────────────┐ │
+│ │ Parse Initial Conditions│   │    │ │ Parse Initial Condition │ │
+│ │                         │   │    │ │                         │ │
+│ │ ic_u_cfg = config[      │   │    │ │ ic_cfg = config[        │ │
+│ │   "initial_condition"   │   │    │ │   "initial_condition"   │ │
+│ │ ]                       │   │    │ │ ]                       │ │
+│ │                         │   │    │ │                         │ │
+│ │ _parse_initial_         │   │    │ │ _parse_initial_         │ │
+│ │   condition(ic_u_cfg)   │   │    │ │   condition(ic_cfg)     │ │
+│ │   ├─→ Extract "type"    │   │    │ │   ├─→ Extract "type"    │ │
+│ │   ├─→ Dispatch:         │   │    │ │   ├─→ Dispatch:         │ │
+│ │   │   - "expression"    │   │    │ │   │   - "expression"    │ │
+│ │   │     → IC.from_      │   │    │ │   │     → IC.from_      │ │
+│ │   │        expression() │   │    │ │   │        expression() │ │
+│ │   │   - "values"        │   │    │ │   │   - "values"        │ │
+│ │   │     → IC.from_      │   │    │ │   │     → IC.from_      │ │
+│ │   │        values()     │   │    │ │   │        values()     │ │
+│ │   └─→ Return IC         │   │    │ │   └─→ Return IC         │ │
+│ │                         │   │    │ │                         │ │
+│ │ Output: ic_u            │   │    │ │ Output: ic              │ │
+│ └─────────────────────────┘   │    │ └─────────────────────────┘ │
+│         │                     │    │         │                   │
+│         ↓                     │    │         ↓                   │
+│ ┌─────────────────────────┐   │    │ ┌─────────────────────────┐ │
+│ │ Parse u_t Initial Cond. │   │    │ │ Parse Operators         │ │
+│ │                         │   │    │ │                         │ │
+│ │ ic_ut_cfg = config[     │   │    │ │ ops_cfg = config[       │ │
+│ │   "initial_condition_   │   │    │ │   "operators"           │ │
+│ │    ut"                  │   │    │ │ ]                       │ │
+│ │ ]                       │   │    │ │                         │ │
+│ │                         │   │    │ │ _parse_operators()      │ │
+│ │ _parse_initial_         │   │    │ │   └─→ For each op_cfg:  │ │
+│ │   condition(ic_ut_cfg)  │   │    │ │       _parse_operator() │ │
+│ │   (same as above)       │   │    │ │                         │ │
+│ │                         │   │    │ │ _parse_operator()       │ │
+│ │ Output: ic_ut           │   │    │ │   ├─→ Extract "type"    │ │
+│ └─────────────────────────┘   │    │ │   ├─→ Dispatch:         │ │
+│         │                     │    │ │   │   - "diffusion"     │ │
+│         ↓                     │    │ │   │     → Diffusion(    │ │
+│ ┌─────────────────────────┐   │    │ │   │        nu, scheme) │ │
+│ │ Parse Spatial Operators │   │    │ │   │   - "advection"    │ │
+│ │                         │   │    │ │   │     → Advection(   │ │
+│ │ spatial_ops_cfg =       │   │    │ │   │        a, scheme)  │ │
+│ │   config.get(           │   │    │ │   │   - "expression"   │ │
+│ │     "spatial_operators",│   │    │ │   │     → Expression   │ │
+│ │     config.get(         │   │    │ │   │        Operator(   │ │
+│ │       "operators", []   │   │    │ │   │        expr,       │ │
+│ │     )                   │   │    │ │   │        params,     │ │
+│ │   )                     │   │    │ │   │        schemes)    │ │
+│ │                         │   │    │ │   └─→ Validate fields  │ │
+│ │ Validate:               │   │    │ │                         │ │
+│ │   if not spatial_ops_   │   │    │ │ Output: List[Operator] │ │
+│ │     cfg: raise Error    │   │    │ └─────────────────────────┘ │
+│ │                         │   │    │         │                   │
+│ │ For each op_cfg:        │   │    │         ↓                   │
+│ │   _parse_operator()     │   │    │ ┌─────────────────────────┐ │
+│ │   (see right column)    │   │    │ │ Combine Operators       │ │
+│ │                         │   │    │ │                         │ │
+│ │ Output:                 │   │    │ │ sum_operators(ops)      │ │
+│ │   List[Operator]        │   │    │ │   ├─→ If len(ops) > 1:  │ │
+│ └─────────────────────────┘   │    │ │   │   → _SumOperator    │ │
+│         │                     │    │ │   │     (combines all)  │ │
+│         ↓                     │    │ │   └─→ Else: return ops[0]│ │
+│ ┌─────────────────────────┐   │    │ │                         │ │
+│ │ Combine Spatial Ops     │   │    │ │ Output: Operator        │ │
+│ │                         │   │    │ └─────────────────────────┘ │
+│ │ sum_operators(          │   │    │         │                   │
+│ │   spatial_operators     │   │    │         ↓                   │
+│ │ )                       │   │    │ ┌─────────────────────────┐ │
+│ │   ├─→ If len > 1:       │   │    │ │ Construct PDEProblem    │ │
+│ │   │   → _SumOperator    │   │    │ │                         │ │
+│ │   └─→ Else: return [0]  │   │    │ │ PDEProblem(             │ │
+│ │                         │   │    │ │   domain=domain,        │ │
+│ │ Output: spatial_op      │   │    │ │   operators=operators,  │ │
+│ └─────────────────────────┘   │    │ │   ic=ic,                │ │
+│         │                     │    │ │   bc_left=bc_left,      │ │
+│         ↓                     │    │ │   bc_right=bc_right     │ │
+│ ┌─────────────────────────┐   │    │ │ )                       │ │
+│ │ Parse u_t Operators     │   │    │ │                         │ │
+│ │ (Optional)              │   │    │ │ __post_init__():        │ │
+│ │                         │   │    │ │   ├─→ Normalize ops     │ │
+│ │ if "u_t_operators" in   │   │    │ │   │   to list           │ │
+│ │   config:               │   │    │ │   ├─→ Validate: len > 0 │ │
+│ │   u_t_ops_cfg = config[ │   │    │ │   └─→ sum_operators()   │ │
+│ │     "u_t_operators"     │   │    │ │      → self._op         │ │
+│ │   ]                     │   │    │ │                         │ │
+│ │   For each op_cfg:      │   │    │ │ Output: PDEProblem      │ │
+│ │     _parse_operator()   │   │    │ └─────────────────────────┘ │
+│ │   u_t_operator =        │   │    │                             │
+│ │     sum_operators(...)  │   │    │                             │
+│ │ else:                   │   │    │                             │
+│ │   u_t_operator = None   │   │    │                             │
+│ │                         │   │    │                             │
+│ │ Output: u_t_operator    │   │    │                             │
+│ └─────────────────────────┘   │    │                             │
+│         │                     │    │                             │
+│         ↓                     │    │                             │
+│ ┌─────────────────────────┐   │    │                             │
+│ │ Construct SecondOrder   │   │    │                             │
+│ │   PDEProblem            │   │    │                             │
+│ │                         │   │    │                             │
+│ │ SecondOrderPDEProblem(  │   │    │                             │
+│ │   domain=domain,        │   │    │                             │
+│ │   spatial_operator=     │   │    │                             │
+│ │     spatial_op,         │   │    │                             │
+│ │   ic_u=ic_u,            │   │    │                             │
+│ │   ic_ut=ic_ut,          │   │    │                             │
+│ │   u_t_operator=         │   │    │                             │
+│ │     u_t_operator,       │   │    │                             │
+│ │   bc_left=bc_left,      │   │    │                             │
+│ │   bc_right=bc_right     │   │    │                             │
+│ │ )                       │   │    │                             │
+│ │                         │   │    │                             │
+│ │ __post_init__():        │   │    │                             │
+│ │   └─→ Validate domain   │   │    │                             │
+│ │      is Domain1D        │   │    │                             │
+│ │                         │   │    │                             │
+│ │ Output:                 │   │    │                             │
+│ │   SecondOrderPDEProblem │   │    │                             │
+│ └─────────────────────────┘   │    │                             │
+└───────────────────────────────┴────┴─────────────────────────────┘
+                              │
+                              ↓
+                    ┌─────────────────────┐
+                    │ Return Problem      │
+                    │ (PDEProblem or      │
+                    │  SecondOrderPDE     │
+                    │  Problem)           │
+                    └─────────────────────┘
+                              ↓
+                    ┌─────────────────────┐
+                    │ Ready for solving!  │
+                    │ problem.solve(...)  │
+                    └─────────────────────┘
+```
+
+**Key Validation Points:**
+- Domain type must be "1d"
+- Boundary condition types must be recognized
+- Initial condition types must be recognized
+- Operator types must be recognized
+- Required fields must be present (e.g., `nu` for diffusion, `a` for advection)
+- Second-order problems require `spatial_operators` or `operators`
+- At least one operator required for `PDEProblem`
+
+**Error Handling:**
+- All parsers raise `ValueError` with descriptive messages
+- Field validation occurs at parse time
+- Type validation occurs during object construction
+
+**Error Handling:** The parser validates:
+- Required fields are present
+- Field types are correct
+- Component-specific constraints (e.g., exactly one of `value` or `expr` for Dirichlet BCs)
+- Raises descriptive `ValueError` messages for debugging
+
 ### Component Parsers
+
+The JSON parser uses a modular approach where each component type has its own parsing function. This design makes it easy to extend the parser with new component types.
 
 #### Domain Parser: `_parse_domain()`
 
@@ -101,10 +350,20 @@ def _parse_domain(cfg: JsonDict):
         nx = cfg["nx"]
         periodic = bool(cfg.get("periodic", False))
         return Domain1D(x0=x0, x1=x1, nx=nx, periodic=periodic)
+    else:
+        raise ValueError(f"Unsupported domain type {domain_type!r}.")
 ```
+
+**Flow:**
+1. Extract domain type (defaults to "1d")
+2. Extract spatial bounds `x0`, `x1` and number of grid points `nx`
+3. Extract periodic flag (defaults to `False`)
+4. Create and return `Domain1D` instance
 
 **Mathematical Result:** Creates a structured grid:
 $$x_i = x_0 + i \cdot \frac{x_1 - x_0}{N-1}, \quad i = 0, 1, \ldots, N-1$$
+
+**Error Handling:** Raises `ValueError` if domain type is not "1d" (extensibility point for future 2D support).
 
 #### Initial Condition Parser: `_parse_initial_condition()`
 
@@ -117,32 +376,88 @@ def _parse_initial_condition(cfg: JsonDict) -> InitialCondition:
     elif ic_type == "values":
         values = cfg["values"]
         return InitialCondition.from_values(values)
+    else:
+        raise ValueError(f"Unknown initial condition type {ic_type!r}.")
 ```
 
+**Flow:**
+1. Extract type (defaults to "expression")
+2. Based on type:
+   - **"expression"**: Extract `expr` string and create `InitialCondition.from_expression(expr)`
+   - **"values"**: Extract `values` array and create `InitialCondition.from_values(values)`
+3. Return `InitialCondition` instance
+
 **Supported Formats:**
-- **Expression**: String like `"np.sin(x)"` evaluated on the grid
-- **Values**: Direct array of values matching grid size
-- **Callable**: Python function (programmatic API only)
+- **Expression**: String like `"np.sin(x)"` evaluated on the grid using safe `eval()` with minimal namespace
+- **Values**: Direct array of values matching grid size (validated during evaluation)
+- **Callable**: Python function (programmatic API only, not supported in JSON)
+
+**Error Handling:** Raises `ValueError` if type is not recognized or if required fields are missing.
 
 #### Boundary Condition Parser: `_parse_bc_one()`
 
-Handles all boundary condition types:
+Handles all boundary condition types for a single boundary (left or right):
 
 ```python
-def _parse_bc_one(side_cfg: Optional[JsonDict], side: str):
+def _parse_bc_one(side_cfg: Optional[JsonDict], side: str) -> Optional[BoundaryCondition]:
+    if side_cfg is None:
+        return None
+    
     bc_type = side_cfg.get("type", "").lower()
     
     if bc_type == "dirichlet":
-        # Parse Dirichlet: u = value or u = expr(t)
+        value = side_cfg.get("value")
+        expr = side_cfg.get("expr")
+        if side == "left":
+            return DirichletLeft(value=value, expr=expr)
+        elif side == "right":
+            return DirichletRight(value=value, expr=expr)
+    
     elif bc_type == "neumann":
-        # Parse Neumann: u_x = value or u_x = expr(t)
+        derivative_value = side_cfg.get("derivative_value")
+        expr = side_cfg.get("expr")
+        if side == "left":
+            return NeumannLeft(derivative_value=derivative_value, expr=expr)
+        elif side == "right":
+            return NeumannRight(derivative_value=derivative_value, expr=expr)
+    
     elif bc_type == "robin":
-        # Parse Robin: a*u + b*u_x = c(t)
+        # Supports both general form (a, b, c/c_expr) and backward-compatible (h, u_env)
+        if "a" in side_cfg or "b" in side_cfg or "c" in side_cfg or "c_expr" in side_cfg:
+            # General form: a*u + b*u_x = c(t)
+            a = side_cfg.get("a")
+            b = side_cfg.get("b")
+            c = side_cfg.get("c")
+            c_expr = side_cfg.get("c_expr")
+            if side == "left":
+                return RobinLeft(a=a, b=b, c=c, c_expr=c_expr)
+            elif side == "right":
+                return RobinRight(a=a, b=b, c=c, c_expr=c_expr)
+        else:
+            # Backward-compatible form: h*u + u_x = h*u_env
+            h = side_cfg.get("h")
+            u_env = side_cfg.get("u_env")
+            if side == "left":
+                return RobinLeft(h=h, u_env=u_env)
+            elif side == "right":
+                return RobinRight(h=h, u_env=u_env)
+    
     elif bc_type == "periodic":
-        # Parse Periodic: u(0) = u(L)
+        return Periodic()
+    
+    else:
+        raise ValueError(f"Unknown boundary condition type: {bc_type}")
 ```
 
-**Modularity:** Each BC type is a separate class, making it easy to add new types.
+**Flow:**
+1. If `side_cfg` is `None`, return `None` (no boundary condition)
+2. Extract `type` field and convert to lowercase
+3. Based on type, extract relevant fields and create appropriate BC class
+4. Return `BoundaryCondition` instance (or `None`)
+
+**Modularity:** Each BC type is a separate class, making it easy to add new types. The parser dispatches to the appropriate constructor based on the type string.
+
+**Error Handling:** Raises `ValueError` for unknown BC types or invalid side specifications.
 
 #### Operator Parser: `_parse_operator()`
 
@@ -151,17 +466,49 @@ def _parse_operator(op_cfg: JsonDict) -> Operator:
     op_type = op_cfg["type"].lower()
     
     if op_type == "diffusion":
-        return Diffusion(nu=op_cfg["nu"])
+        if "nu" not in op_cfg:
+            raise ValueError("Diffusion operator requires 'nu' coefficient.")
+        nu = op_cfg["nu"]
+        scheme = op_cfg.get("scheme", "central")
+        return Diffusion(nu=nu, scheme=scheme)
+    
     elif op_type == "advection":
-        return Advection(a=op_cfg["a"])
+        if "a" not in op_cfg:
+            raise ValueError("Advection operator requires 'a' coefficient.")
+        a = op_cfg["a"]
+        scheme = op_cfg.get("scheme", "upwind_first")
+        return Advection(a=a, scheme=scheme)
+    
     elif op_type in ("expression", "expression_operator"):
+        expr = op_cfg["expr"]
+        params = op_cfg.get("params", {})
+        schemes = op_cfg.get("schemes", {})
         return ExpressionOperator(
-            expr_string=op_cfg["expr"],
-            params=op_cfg.get("params", {})
+            expr_string=expr,
+            params=params,
+            schemes=schemes
         )
+    
+    else:
+        raise ValueError(f"Unknown operator type {op_type!r}.")
 ```
 
-**Extensibility:** New operator types can be added by extending this function and creating new `Operator` subclasses.
+**Flow:**
+1. Extract `type` field and convert to lowercase
+2. Based on type:
+   - **"diffusion"**: Extract `nu` (required), `scheme` (optional, default: "central"), create `Diffusion`
+   - **"advection"**: Extract `a` (required), `scheme` (optional, default: "upwind_first"), create `Advection`
+   - **"expression"** or **"expression_operator"**: Extract `expr` (required), `params` (optional), `schemes` (optional), create `ExpressionOperator`
+3. Return `Operator` instance
+
+**Extensibility:** New operator types can be added by:
+1. Creating a new `Operator` subclass
+2. Adding a new `elif` branch in `_parse_operator()`
+3. Specifying required and optional fields
+
+**Error Handling:** 
+- Raises `ValueError` if required fields are missing (e.g., `nu` for diffusion, `a` for advection)
+- Raises `ValueError` for unknown operator types
 
 ---
 
@@ -220,7 +567,8 @@ def evaluate(self, domain: Domain1D) -> np.ndarray:
     
     if self.expr is not None:
         # Safe evaluation with minimal namespace
-        env = {"np": np, "x": x}
+        env = _build_safe_eval_env()  # Returns {"np": np}
+        env["x"] = x  # Inject grid points
         result = eval(self.expr, {"__builtins__": {}}, env)
         return np.asarray(result, dtype=float)
     
@@ -228,15 +576,46 @@ def evaluate(self, domain: Domain1D) -> np.ndarray:
         result = self.func(x)
         return np.asarray(result, dtype=float)
     
-    # Direct values (already validated for shape)
-    return np.asarray(self.values, dtype=float)
+    # Direct values (validate shape matches grid)
+    arr = np.asarray(self.values, dtype=float)
+    if arr.shape != x.shape:
+        raise ValueError(
+            f"Initial condition values have shape {arr.shape}, "
+            f"but domain grid has shape {x.shape}."
+        )
+    return arr
 ```
+
+**Step-by-Step Process:**
+
+1. **Extract grid points**: `x = domain.x` (1D array of length `nx`)
+
+2. **Expression mode** (`self.expr is not None`):
+   - Build safe evaluation environment: `{"np": np, "x": x}`
+   - No `__builtins__` to prevent code injection
+   - Evaluate expression string using `eval()`
+   - Convert result to NumPy array with `dtype=float`
+
+3. **Callable mode** (`self.func is not None`):
+   - Call function with grid points: `result = self.func(x)`
+   - Convert result to NumPy array
+
+4. **Values mode** (`self.values is not None`):
+   - Convert to NumPy array
+   - **Validate shape**: Must match grid shape `x.shape`
+   - Raise `ValueError` if shapes don't match
+
+**Safety Features:**
+- **Minimal namespace**: Only `np` and `x` are available in expression evaluation
+- **No builtins**: `{"__builtins__": {}}` prevents access to dangerous functions
+- **Shape validation**: Ensures values array matches grid size
+- **Type coercion**: All results converted to `float` dtype for numerical consistency
 
 ### Mathematical Interpretation
 
 Given an initial condition $u(x, 0) = u_0(x)$, we evaluate it at each grid point:
 $$\mathbf{u}(0) = [u_0(x_0), u_0(x_1), \ldots, u_0(x_{N-1})]^T$$
-**Example:** For $$u_0(x) = \sin(x)$$ on grid points $$x_i$$:
+**Example:** For $u_0(x) = \sin(x)$ on grid points $x_i$:
 $$u_i(0) = \sin(x_i), \quad i = 0, 1, \ldots, N-1$$
 ### Safety: Expression Evaluation
 
@@ -255,33 +634,68 @@ This allows mathematical expressions like `"np.sin(x)"` while preventing dangero
 
 ```python
 def initial_full(self, t0: float = 0.0) -> Array:
+    # Step 1: Evaluate initial condition on grid
     u0 = self.ic.evaluate(self.domain)
-    # Optionally apply boundary conditions
+    
+    # Step 2: Apply boundary conditions for non-periodic domains
     if not self.domain.periodic:
         if self.bc_left is not None:
             self.bc_left.apply_to_full(u0, t0, self.domain)
         if self.bc_right is not None:
             self.bc_right.apply_to_full(u0, t0, self.domain)
-    return u0
+    
+    return u0  # Shape: (nx,)
 ```
+
+**Flow:**
+1. Evaluate IC expression/values/callable on grid → `u0` (shape: `(nx,)`)
+2. For non-periodic domains, apply boundary conditions to enforce constraints at $t=0$
+3. Return full initial state vector
 
 **Second-Order Problems (`SecondOrderPDEProblem`):**
 
 ```python
 def initial_full(self, t0: float = 0.0) -> Array:
+    # Step 1: Evaluate both initial conditions
     u0 = self.ic_u.evaluate(self.domain)      # u(x, 0)
-    v0 = self.ic_ut.evaluate(self.domain)     # u_t(x, 0)
+    v0 = self.ic_ut.evaluate(self.domain)     # u_t(x, 0) = v(x, 0)
     
-    # Apply BCs to u0 (not v0)
-    # ... (same as first-order)
+    # Step 2: Ensure arrays are 1D and handle scalar ICs
+    u0 = np.asarray(u0, dtype=float).flatten()
+    v0 = np.asarray(v0, dtype=float).flatten()
     
-    # Return extended state [u, v] where v = u_t
-    return np.concatenate([u0, v0])
+    # Step 3: Handle scalar initial conditions (broadcast to array)
+    if u0.size == 1:
+        u0 = np.full(self.domain.nx, float(u0))
+    if v0.size == 1:
+        v0 = np.full(self.domain.nx, float(v0))
+    
+    # Step 4: Apply BCs to u0 (not v0) for non-periodic domains
+    if not self.domain.periodic:
+        if self.bc_left is not None:
+            self.bc_left.apply_to_full(u0, t0, self.domain)
+        if self.bc_right is not None:
+            self.bc_right.apply_to_full(u0, t0, self.domain)
+    
+    # Step 5: Return extended state [u, v] where v = u_t
+    if self.domain.periodic:
+        return np.concatenate([u0, v0])  # Shape: (2*nx,)
+    else:
+        return np.concatenate([u0[1:-1], v0[1:-1]])  # Shape: (2*(nx-2),)
 ```
+
+**Flow:**
+1. Evaluate both ICs: `u0 = u(x, 0)`, `v0 = u_t(x, 0)`
+2. Handle scalar ICs by broadcasting to full grid
+3. Apply boundary conditions to `u0` only (boundary conditions apply to $u$, not $u_t$)
+4. For periodic: return `[u0, v0]` (full state)
+5. For non-periodic: return `[u0[1:-1], v0[1:-1]]` (interior only)
 
 **Mathematical Result:** For second-order problems, the initial state vector is doubled:
 $$\mathbf{y}(0) = \begin{bmatrix} \mathbf{u}(0) \\ \mathbf{v}(0) \end{bmatrix}$$
-where $$\mathbf{v}(0) = \frac{\partial \mathbf{u}}{\partial t}(0)$$
+where $\mathbf{v}(0) = \frac{\partial \mathbf{u}}{\partial t}(0)$.
+
+**Important:** Boundary conditions are applied to $u$ only, not to $v = u_t$. This is because physical boundary conditions typically constrain the solution $u$, not its time derivative.
 
 ---
 
@@ -444,7 +858,7 @@ Spatial operators compute derivatives using **finite difference methods**. The l
 
 **Mathematical Formula (Central Difference):**
 $$\frac{\partial u}{\partial x}(x_i) \approx \frac{u_{i+1} - u_{i-1}}{2\Delta x}$$
-**Accuracy:** $$O(\Delta x^2)$$ (second-order)
+**Accuracy:** $O(\Delta x^2)$ (second-order)
 
 **Implementation:**
 
@@ -514,77 +928,399 @@ def _central_third_derivative(u: Array, dx: float, periodic: bool) -> Array:
 
 **Derivation:** The third derivative stencil is derived using Taylor series expansions to cancel lower-order terms.
 
-### Operator Classes
+### Discretization Schemes
 
-#### Diffusion Operator
+The library supports multiple discretization schemes through the `spatial_discretization` module. Different schemes are optimal for different types of PDE terms, allowing for improved accuracy and stability.
 
-**Mathematical Form:**
-$$L[u] = \nu \frac{\partial^2 u}{\partial x^2}$$
-**Implementation:**
+#### Available Schemes
+
+The `DiscretizationScheme` enum provides the following options:
+
+- **`CENTRAL`**: Second-order central differences
+  - Best for: Diffusion terms, smooth solutions
+  - Accuracy: $O(\Delta x^2)$
+  - May cause oscillations for advection-dominated problems with sharp gradients
+
+- **`UPWIND_FIRST`**: First-order upwind scheme
+  - Best for: Advection terms, stability-critical problems
+  - Accuracy: $O(\Delta x)$
+  - Very stable, prevents oscillations by using information from the upwind direction
+
+- **`UPWIND_SECOND`**: Second-order upwind scheme (ENO-like)
+  - Best for: Advection terms where both accuracy and stability are important
+  - Accuracy: $O(\Delta x^2)$
+  - More accurate than first-order upwind while maintaining stability
+
+- **`BACKWARD`**: First-order backward differences
+- **`FORWARD`**: First-order forward differences
+
+#### Why Different Schemes?
+
+Different PDE terms benefit from different discretization methods:
+
+1. **Advection terms** ($u_x$): Use upwind schemes to respect the direction of information flow and prevent oscillations
+2. **Diffusion terms** ($u_{xx}$): Use central differences for optimal accuracy
+3. **Reaction terms**: No spatial discretization needed
+
+#### Implementation: `spatial_discretization.py`
+
+The discretization module provides unified functions for computing derivatives:
 
 ```python
-@dataclass
-class Diffusion(Operator):
-    nu: float | str | Callable  # Diffusivity coefficient
-    
-    def apply(self, u_full, domain, t):
-        u_xx = _central_second_derivative(u_full, domain.dx, domain.periodic)
-        nu_vals = _eval_coeff(self.nu, domain.x, t)  # Can be space/time-dependent
-        return nu_vals * u_xx
+def first_derivative(
+    u: Array,
+    dx: float,
+    domain: Domain1D,
+    scheme: DiscretizationScheme | str = DiscretizationScheme.CENTRAL,
+    velocity: Optional[Array] = None,
+) -> Array:
+    """Compute first derivative using specified scheme."""
+    # Dispatches to appropriate implementation based on scheme
 ```
 
-#### Advection Operator
+**Key Features:**
+- **Modular design**: All derivative computations go through a single interface
+- **Scheme selection**: Each operator can specify its preferred scheme
+- **Velocity-aware**: Upwind schemes automatically use velocity to determine upwind direction
+
+#### Upwind Scheme Implementation
+
+**First-Order Upwind:**
+
+For advection terms, the upwind direction is determined by the sign of the velocity:
+
+- If $a > 0$: Use backward difference $u_x \approx \frac{u_i - u_{i-1}}{\Delta x}$
+- If $a < 0$: Use forward difference $u_x \approx \frac{u_{i+1} - u_i}{\Delta x}$
 
 **Mathematical Form:**
-$$L[u] = -a \frac{\partial u}{\partial x}$$
-**Implementation:**
+$$u_x(x_i) \approx \begin{cases}
+\frac{u_i - u_{i-1}}{\Delta x} & \text{if } a > 0 \\
+\frac{u_{i+1} - u_i}{\Delta x} & \text{if } a < 0
+\end{cases}$$
+
+**Second-Order Upwind:**
+
+Uses a three-point stencil biased in the upwind direction:
+
+- If $a > 0$: $u_x \approx \frac{3u_i - 4u_{i-1} + u_{i-2}}{2\Delta x}$
+- If $a < 0$: $u_x \approx \frac{-u_{i+2} + 4u_{i+1} - 3u_i}{2\Delta x}$
+
+**Mathematical Form:**
+$$u_x(x_i) \approx \begin{cases}
+\frac{3u_i - 4u_{i-1} + u_{i-2}}{2\Delta x} & \text{if } a > 0 \\
+\frac{-u_{i+2} + 4u_{i+1} - 3u_i}{2\Delta x} & \text{if } a < 0
+\end{cases}$$
+
+#### Integration with Operators
+
+**Advection Operator:**
 
 ```python
 @dataclass
 class Advection(Operator):
-    a: float | str | Callable  # Advection speed
+    a: float | str | Callable
+    scheme: DiscretizationScheme | str = DiscretizationScheme.UPWIND_FIRST
     
     def apply(self, u_full, domain, t):
-        u_x = _central_first_derivative(u_full, domain.dx, domain.periodic)
         a_vals = _eval_coeff(self.a, domain.x, t)
+        u_x = first_derivative(u_full, domain.dx, domain, self.scheme, velocity=a_vals)
         return -a_vals * u_x
 ```
 
-#### ExpressionOperator
-
-**Mathematical Form:**
-$$L[u] = f(u, u_x, u_{xx}, u_{xxx}, x, t, \mathbf{p})$$
-where $$\mathbf{p}$$ are parameters.
-
-**Implementation:**
+**ExpressionOperator with Mixed Schemes:**
 
 ```python
 @dataclass
 class ExpressionOperator(Operator):
     expr_string: str
     params: Optional[dict] = None
-    
-    def __post_init__(self):
-        # Parse expression using SymPy
-        u, ux, uxx, uxxx, x, t = sp.symbols("u ux uxx uxxx x t")
-        self._base_symbols = {"u": u, "ux": ux, "uxx": uxx, "uxxx": uxxx, "x": x, "t": t}
-        
-        # Compile to fast NumPy function
-        self._func = sp.lambdify(args, self._expr, modules=["numpy"])
+    schemes: Optional[dict[str, DiscretizationScheme | str]] = None
     
     def apply(self, u_full, domain, t):
-        # Compute derivatives
-        u = u_full
-        ux = _central_first_derivative(u, domain.dx, domain.periodic)
-        uxx = _central_second_derivative(u, domain.dx, domain.periodic)
-        uxxx = _central_third_derivative(u, domain.dx, domain.periodic)
+        # Compute derivatives with specified schemes
+        ux = first_derivative(u, dx, domain, self._ux_scheme, velocity=velocity)
+        uxx = second_derivative(u, dx, domain, self._uxx_scheme)
+        uxxx = third_derivative(u, dx, domain, self._uxxx_scheme)
+        # ... evaluate expression
+```
+
+This allows different derivatives in the same expression to use different schemes, e.g., upwind for $u_x$ and central for $u_{xx}$.
+
+#### JSON Configuration
+
+Schemes can be specified in JSON:
+
+```json
+{
+  "operators": [
+    {
+      "type": "advection",
+      "a": 1.0,
+      "scheme": "upwind_second"
+    },
+    {
+      "type": "expression",
+      "expr": "-u*ux + nu*uxx",
+      "params": {"nu": 0.1},
+      "schemes": {
+        "ux": "upwind_second",
+        "uxx": "central"
+      }
+    }
+  ]
+}
+```
+
+### Operator Classes
+
+Operators implement the `Operator` interface with a single `apply()` method that computes the spatial contribution to the time derivative.
+
+#### Coefficient Evaluation: `_eval_coeff()`
+
+Before discussing specific operators, it's important to understand how coefficients are evaluated:
+
+```python
+def _eval_coeff(coeff: float | str | Callable, x: Array, t: float) -> Array:
+    """Evaluate a coefficient that may be constant, space/time-dependent, or a string expression."""
+    if isinstance(coeff, (int, float)):
+        return float(coeff) * np.ones_like(x, dtype=float)  # Broadcast constant
+    
+    if callable(coeff):
+        return np.asarray(coeff(x, t), dtype=float)  # Call function
+    
+    if isinstance(coeff, str):
+        env = {"np": np, "x": x, "t": t}
+        return np.asarray(eval(coeff, {"__builtins__": {}}, env), dtype=float)  # Safe eval
+    
+    raise TypeError(f"Unsupported coefficient type: {type(coeff)!r}")
+```
+
+**Supported Coefficient Types:**
+1. **Scalar**: Constant value broadcast to all grid points
+2. **Callable**: Function `f(x, t)` that returns an array of values
+3. **String**: Expression in `x`, `t`, and `np` (e.g., `"0.1 + 0.05 * x"`)
+
+**Safety:** String expressions use the same safe evaluation as initial conditions.
+
+#### Diffusion Operator
+
+**Mathematical Form:**
+$$L[u] = \nu \frac{\partial^2 u}{\partial x^2}$$
+
+**Implementation:**
+
+```python
+@dataclass
+class Diffusion(Operator):
+    nu: float | str | Callable  # Diffusivity coefficient
+    scheme: DiscretizationScheme | str = DiscretizationScheme.CENTRAL
+    
+    def apply(self, u_full, domain, t):
+        x = domain.x
+        dx = domain.dx
         
-        # Evaluate expression
-        result = self._func(u, ux, uxx, uxxx, domain.x, t, *param_vals)
+        # Compute second derivative using specified scheme
+        u_xx = second_derivative(u_full, dx, domain, self.scheme)
+        
+        # Evaluate coefficient (may be space/time-dependent)
+        nu_vals = _eval_coeff(self.nu, x, t)
+        
+        # Element-wise multiplication
+        return nu_vals * u_xx
+```
+
+**Key Features:**
+- Supports constant, space-dependent, or time-dependent diffusivity
+- Uses central differences by default (optimal for diffusion)
+- Element-wise multiplication allows for spatially varying coefficients
+
+**Example:** For $\nu(x) = 0.1 + 0.05x$:
+```python
+diffusion = Diffusion(nu="0.1 + 0.05 * x")
+```
+
+#### Advection Operator
+
+**Mathematical Form:**
+$$L[u] = -a \frac{\partial u}{\partial x}$$
+
+**Implementation:**
+
+```python
+@dataclass
+class Advection(Operator):
+    a: float | str | Callable  # Advection speed
+    scheme: DiscretizationScheme | str = DiscretizationScheme.UPWIND_FIRST
+    
+    def apply(self, u_full, domain, t):
+        x = domain.x
+        dx = domain.dx
+        
+        # Evaluate advection speed (may be space/time-dependent)
+        a_vals = _eval_coeff(self.a, x, t)
+        
+        # Compute first derivative using specified scheme
+        # For upwind schemes, pass velocity to determine upwind direction
+        if scheme in (DiscretizationScheme.UPWIND_FIRST, DiscretizationScheme.UPWIND_SECOND):
+            u_x = first_derivative(u_full, dx, domain, scheme, velocity=a_vals)
+        else:
+            u_x = first_derivative(u_full, dx, domain, scheme)
+        
+        return -a_vals * u_x
+```
+
+**Key Features:**
+- **Default scheme**: `UPWIND_FIRST` for stability (can be overridden)
+- **Velocity-aware**: Upwind schemes use the advection speed to determine upwind direction
+- Supports constant, space-dependent, or time-dependent advection speed
+
+**Why Upwind by Default?**
+- Central differences can cause oscillations for advection-dominated problems
+- Upwind schemes respect the direction of information flow
+- First-order upwind is very stable, though less accurate
+
+**Example:** For $a(x,t) = 1.0 + 0.5\cos(x)$ with second-order upwind:
+```python
+advection = Advection(a="1.0 + 0.5 * np.cos(x)", scheme="upwind_second")
+```
+
+#### ExpressionOperator
+
+**Mathematical Form:**
+$$L[u] = f(u, u_x, u_{xx}, u_{xxx}, x, t, \mathbf{p})$$
+where $\mathbf{p}$ are parameters.
+
+**Initialization (`__post_init__`):**
+
+```python
+def __post_init__(self):
+    if self.params is None:
+        self.params = {}
+    
+    # Parse schemes (if provided)
+    if self.schemes is None:
+        self.schemes = {}
+    
+    # Convert string schemes to enums
+    self._ux_scheme = DiscretizationScheme(self.schemes.get("ux", "central"))
+    self._uxx_scheme = DiscretizationScheme(self.schemes.get("uxx", "central"))
+    self._uxxx_scheme = DiscretizationScheme(self.schemes.get("uxxx", "central"))
+    
+    # Try to detect velocity for upwind schemes (heuristic)
+    # ... (velocity detection logic)
+    
+    # Define symbols for SymPy parsing
+    u, ux, uxx, uxxx, x, t = sp.symbols("u ux uxx uxxx x t")
+    self._base_symbols = {"u": u, "ux": ux, "uxx": uxx, "uxxx": uxxx, "x": x, "t": t}
+    
+    # Parameter symbols
+    self._param_symbols = {name: sp.symbols(name) for name in self.params.keys()}
+    
+    # Allowed functions (sin, cos, exp, log, tanh, sqrt)
+    allowed_funcs = {name: getattr(sp, name) for name in ["sin", "cos", "exp", "log", "tanh", "sqrt"]}
+    
+    # Build local dictionary for safe parsing
+    local_dict = {**self._base_symbols, **self._param_symbols, **allowed_funcs}
+    
+    # Parse expression safely
+    self._expr = sp.sympify(self.expr_string, locals=local_dict)
+    
+    # Build argument list and compile to NumPy function
+    args = list(self._base_symbols.values()) + list(self._param_symbols.values())
+    self._param_order = list(self._param_symbols.keys())
+    self._func = sp.lambdify(args, self._expr, modules=["numpy"])
+```
+
+**Application (`apply`):**
+
+```python
+def apply(self, u_full, domain, t):
+    x = domain.x
+    dx = domain.dx
+    
+    u = np.asarray(u_full, dtype=float)
+    
+    # Compute derivatives with specified schemes
+    # For upwind, try to detect velocity from expression
+    velocity = None
+    if self._ux_scheme in (DiscretizationScheme.UPWIND_FIRST, DiscretizationScheme.UPWIND_SECOND):
+        # Attempt to extract velocity from expression
+        # (simplified heuristic - may not work for complex expressions)
+        if self._velocity_func is not None:
+            # ... compute velocity from expression
+        else:
+            velocity = np.ones_like(u)  # Fallback
+    
+    ux = first_derivative(u, dx, domain, self._ux_scheme, velocity=velocity)
+    uxx = second_derivative(u, dx, domain, self._uxx_scheme)
+    uxxx = third_derivative(u, dx, domain, self._uxxx_scheme)
+    
+    # Get parameter values in stable order
+    param_vals = [self.params[name] for name in self._param_order]
+    
+    # Evaluate compiled expression
+    result = self._func(u, ux, uxx, uxxx, x, t, *param_vals)
+    return np.asarray(result, dtype=float)
+```
+
+**Key Features:**
+- **SymPy parsing**: Safe expression parsing prevents code injection
+- **Fast compilation**: `lambdify` compiles to optimized NumPy code
+- **Scheme selection**: Different schemes can be used for different derivatives
+- **Parameter support**: Named parameters can be passed and substituted
+- **Function support**: Standard mathematical functions (sin, cos, exp, etc.)
+
+**Safety:** 
+- SymPy's `sympify` only parses valid mathematical expressions
+- No access to dangerous Python builtins
+- `lambdify` generates safe NumPy code
+
+**Performance:** 
+- Expression is parsed once during initialization
+- Compiled function is reused for every `apply()` call
+- No repeated parsing overhead
+
+**Example:** Burgers' equation with upwind for advection:
+```python
+op = ExpressionOperator(
+    expr_string="-u*ux + nu*uxx",
+    params={"nu": 0.1},
+    schemes={"ux": "upwind_second", "uxx": "central"}
+)
+```
+
+#### Operator Combination: `sum_operators()`
+
+Multiple operators can be combined into a single operator:
+
+```python
+def sum_operators(ops: Iterable[Operator]) -> Operator:
+    """Combine several operators into a single Operator that returns their sum."""
+    return _SumOperator(list(ops))
+
+class _SumOperator(Operator):
+    def __init__(self, operators: Sequence[Operator]):
+        if not operators:
+            raise ValueError("At least one operator is required.")
+        self._operators: List[Operator] = list(operators)
+    
+    def apply(self, u_full: Array, domain, t: float) -> Array:
+        result = np.zeros_like(u_full, dtype=float)
+        for op in self._operators:
+            result += op.apply(u_full, domain, t)
         return result
 ```
 
-**Safety:** SymPy parsing prevents code injection, and `lambdify` compiles to fast NumPy code.
+**Mathematical Result:** If $L_1, L_2, \ldots, L_n$ are operators, then:
+$$(L_1 + L_2 + \cdots + L_n)[u] = L_1[u] + L_2[u] + \cdots + L_n[u]$$
+
+**Usage:**
+```python
+advection = Advection(a=1.0)
+diffusion = Diffusion(nu=0.1)
+combined = sum_operators([advection, diffusion])
+# combined.apply(u, domain, t) = advection.apply(u, domain, t) + diffusion.apply(u, domain, t)
+```
 
 ---
 
@@ -600,7 +1336,8 @@ The library supports two types of PDE problems:
 **Mathematical Form:**
 $$\frac{\partial u}{\partial t} = L[u]$$
 After spatial discretization:
-$$\frac{d\mathbf{u}}{dt} = \mathbf{F}(\mathbf{u}, t)$$ where $\mathbf{F}$ applies the spatial operator $L$ at each grid point.
+$$\frac{d\mathbf{u}}{dt} = \mathbf{F}(\mathbf{u}, t)$$
+where $\mathbf{F}$ applies the spatial operator $L$ at each grid point.
 
 **State Vector:**
 
@@ -663,8 +1400,70 @@ def solve(self, t_span, t_eval=None, method="RK45", **kwargs):
     return result
 ```
 
+**Complete Solve Process:**
+
+```python
+def solve(self, t_span, t_eval=None, method="RK45", plot=False, plot_dir=None, **kwargs):
+    t0, _ = t_span
+    
+    # Step 1: Determine initial state and RHS function
+    if self.domain.periodic:
+        y0 = self.initial_full(t0)  # Full state vector [u_0, ..., u_{N-1}]
+        fun = self._rhs_periodic     # RHS function for periodic domains
+    else:
+        y0 = self.initial_interior(t0)  # Interior only [u_1, ..., u_{N-2}]
+        fun = self._rhs_nonperiodic      # RHS function for non-periodic domains
+    
+    # Step 2: Call SciPy's ODE solver
+    result = solve_ivp(
+        fun=fun,
+        t_span=t_span,
+        y0=y0,
+        t_eval=t_eval,
+        method=method,
+        **kwargs  # e.g., rtol, atol, max_step, etc.
+    )
+    
+    # Step 3: Optional plotting
+    if plot:
+        # Reconstruct full solutions for visualization
+        # ... (plotting code)
+    
+    return result
+```
+
+**Step-by-Step Breakdown:**
+
+1. **Initial State Preparation:**
+   - **Periodic**: `y0 = initial_full(t0)` → full state vector of length `nx`
+   - **Non-periodic**: `y0 = initial_interior(t0)` → interior state of length `nx-2`
+
+2. **RHS Function Selection:**
+   - **Periodic**: `fun = _rhs_periodic` → directly applies operators to full state
+   - **Non-periodic**: `fun = _rhs_nonperiodic` → reconstructs full state, applies operators, returns interior
+
+3. **Time Integration:**
+   - `solve_ivp` is called with the selected RHS function
+   - Adaptive time stepping adjusts step size to maintain error tolerances
+   - Solution is stored at times specified by `t_eval` (if provided)
+
+4. **Post-Processing:**
+   - If `plot=True`, full solutions are reconstructed and plots are generated
+   - Result object contains `result.t` (time points) and `result.y` (solution snapshots)
+
 **Mathematical Result:** `solve_ivp` integrates the ODE system:
 $$\mathbf{u}(t) = \mathbf{u}(0) + \int_0^t \mathbf{F}(\mathbf{u}(\tau), \tau) \, d\tau$$
+
+**Adaptive Time Stepping:**
+
+The solver automatically adjusts the time step $\Delta t$ to maintain:
+$$\text{error} < \text{rtol} \cdot |\mathbf{u}| + \text{atol}$$
+
+where:
+- `rtol`: Relative tolerance (default: 1e-6)
+- `atol`: Absolute tolerance (default: 1e-8)
+
+This ensures accuracy while maximizing efficiency.
 ### Second-Order Problems: `SecondOrderPDEProblem`
 
 **Mathematical Form:**
@@ -762,7 +1561,13 @@ where `rtol` (relative tolerance) and `atol` (absolute tolerance) are user-speci
 
 ## Plotting and Visualization
 
-The plotting module provides utilities for visualizing 1D PDE solutions. It uses matplotlib with the Agg backend (suitable for headless environments).
+The plotting module provides utilities for visualizing 1D PDE solutions. It uses matplotlib with the Agg backend (suitable for headless environments like CI servers).
+
+**Design Principles:**
+- **Headless-safe**: Uses Agg backend, no GUI required
+- **File-based**: All plots saved to disk, no interactive display
+- **Modular**: Each plot type is a separate function
+- **Optional**: Plotting is completely optional; solving works without matplotlib
 
 ### Plot Types
 
@@ -890,21 +1695,39 @@ def solve(self, t_span, t_eval=None, method="RK45", plot=False, plot_dir=None, *
         base_dir = plot_dir or "test_plots"
         os.makedirs(base_dir, exist_ok=True)
         
+        x = self.domain.x
+        
         # Reconstruct full solutions for plotting
         if self.domain.periodic:
+            # Periodic: result.y already contains full state
             full_solutions = result.y
         else:
+            # Non-periodic: reconstruct full state from interior at each time
             full_states = []
             for k, t in enumerate(result.t):
                 interior_k = result.y[:, k]
                 full_k = self._reconstruct_full_from_interior(interior_k, t)
                 full_states.append(full_k)
-            full_solutions = np.stack(full_states, axis=1)
+            full_solutions = np.stack(full_states, axis=1)  # Shape: (nx, nt)
         
         # Generate plots
-        plot_1d(x, full_solutions[:, 0], title="Initial solution", savepath=...)
-        plot_1d(x, full_solutions[:, -1], title="Final solution", savepath=...)
-        plot_1d_time_series(x, full_solutions, result.t, prefix="solution1d", out_dir=base_dir)
+        plot_1d(
+            x, full_solutions[:, 0], 
+            title="Initial solution (1D)", 
+            savepath=os.path.join(base_dir, "solution1d_initial.png")
+        )
+        plot_1d(
+            x, full_solutions[:, -1], 
+            title="Final solution (1D)", 
+            savepath=os.path.join(base_dir, "solution1d_final.png")
+        )
+        plot_1d_time_series(
+            x, full_solutions, result.t, 
+            prefix="solution1d", 
+            out_dir=base_dir
+        )
+    
+    return result
 ```
 
 **For Second-Order Problems:**
@@ -913,12 +1736,232 @@ The plotting extracts the `u` component (first half of state vector):
 
 ```python
 # In SecondOrderPDEProblem.solve()
-result.u = result.y[:nx, :]  # Extract u component
-result.v = result.y[nx:, :]  # Extract v = u_t component
+# After solving, extract components
+nx = self.domain.nx
+if self.domain.periodic:
+    result.u = result.y[:nx, :]  # Extract u component
+    result.v = result.y[nx:, :]  # Extract v = u_t component
+else:
+    # For non-periodic, reconstruct full u and v
+    u_states = []
+    v_states = []
+    for k, t in enumerate(result.t):
+        interior_k = result.y[:, k]
+        u_full, v_full = self._reconstruct_full_from_interior(interior_k, t)
+        u_states.append(u_full)
+        v_states.append(v_full)
+    result.u = np.stack(u_states, axis=1)
+    result.v = np.stack(v_states, axis=1)
 
 # Plotting uses result.u
 plot_1d(x, result.u[:, 0], title="Initial solution u(x,0)", savepath=...)
 ```
+
+**CLI Integration (`run_problem.py`):**
+
+The CLI automatically generates additional plots when visualization is enabled:
+
+```python
+# After solving, generate combined plot and heatmap
+if vis_enable:
+    plot_1d_combined(
+        x, full_solutions, result.t,
+        title="Combined 1D time series",
+        savepath=base_plots_dir / "solution1d_combined.png",
+        max_curves=8
+    )
+    plot_xt_heatmap(
+        x, result.t, full_solutions,
+        title="u(x,t) heatmap",
+        savepath=base_plots_dir / "solution1d_xt_heatmap.png"
+    )
+```
+
+**Plot Organization:**
+- All plots saved to `plots/<save_dir>/` directory
+- Initial and final snapshots: `solution1d_initial.png`, `solution1d_final.png`
+- Time series frames: `solution1d_t0000.png`, `solution1d_t0001.png`, ...
+- Combined plot: `solution1d_combined.png`
+- Heatmap: `solution1d_xt_heatmap.png`
+
+---
+
+## Dataset Generation
+
+The library includes utilities for generating parameterized datasets, useful for machine learning applications (e.g., training Physics-Informed Neural Networks).
+
+### Module: `dataset.py`
+
+**Purpose:** Generate multiple PDE solutions by sampling parameters from specified ranges.
+
+**Key Classes:**
+
+#### `ParameterRange`
+
+```python
+@dataclass
+class ParameterRange:
+    name: str      # Parameter name (e.g., "nu", "alpha")
+    low: float     # Lower bound
+    high: float    # Upper bound
+```
+
+Defines a range for uniform random sampling.
+
+#### `ParameterSampler`
+
+```python
+class ParameterSampler:
+    def __init__(self, param_ranges: List[ParameterRange], seed: Optional[int] = None):
+        self.param_ranges = param_ranges
+        self.rng = random.Random(seed)
+    
+    def sample(self) -> Dict[str, float]:
+        """Sample one set of parameter values."""
+        return {pr.name: self.rng.uniform(pr.low, pr.high) for pr in self.param_ranges}
+```
+
+Samples parameter values uniformly from specified ranges.
+
+#### `generate_dataset()`
+
+```python
+def generate_dataset(
+    json_template: Union[str, Path, Dict[str, Any]],
+    param_ranges: List[ParameterRange],
+    num_samples: int,
+    savepath: Union[str, Path] = "dataset.pt",
+    seed: Optional[int] = None,
+    t_span: Optional[tuple[float, float]] = None,
+    t_eval: Optional[Sequence[float]] = None,
+    solver_method: str = "RK45",
+    solver_kwargs: Optional[Dict[str, Any]] = None,
+    save_heatmaps: bool = True,
+    problem_name: Optional[str] = None,
+    overwrite: bool = False,
+) -> Dict[str, torch.Tensor]:
+```
+
+**Process:**
+
+1. **Load template**: JSON configuration file or dictionary
+2. **Create sampler**: `ParameterSampler(param_ranges, seed)`
+3. **For each sample**:
+   - Sample parameter values
+   - Substitute parameters into JSON template
+   - Build `PDEProblem` from modified config
+   - Solve PDE
+   - Extract solution
+4. **Collect results**: Stack all solutions into PyTorch tensors
+5. **Save dataset**: Save as `.pt` file containing:
+   - `params`: Parameter values (shape: `[num_samples, num_params]`)
+   - `u`: Solutions (shape: `[num_samples, nx, nt]`)
+   - `x`: Spatial grid (shape: `[nx]`)
+   - `t`: Time points (shape: `[nt]`)
+
+**Output Format:**
+
+```python
+dataset = {
+    "params": torch.Tensor,  # Shape: (num_samples, num_params)
+    "u": torch.Tensor,       # Shape: (num_samples, nx, nt)
+    "x": torch.Tensor,       # Shape: (nx,)
+    "t": torch.Tensor,       # Shape: (nt,)
+}
+```
+
+**Usage:**
+
+```python
+from pde.dataset import ParameterRange, generate_dataset
+
+param_ranges = [
+    ParameterRange(name="nu", low=0.01, high=0.1),
+    ParameterRange(name="alpha", low=0.001, high=0.01)
+]
+
+dataset = generate_dataset(
+    json_template="examples/heat1d_parameterized.json",
+    param_ranges=param_ranges,
+    num_samples=100,
+    savepath="heat1d_dataset.pt",
+    seed=42
+)
+```
+
+**CLI Integration:**
+
+```bash
+python run_problem.py examples/heat1d_parameterized.json --dataset --samples 100
+```
+
+---
+
+## Command-Line Interface
+
+The library provides a CLI (`run_problem.py`) for running JSON-defined problems without writing Python code.
+
+### Entry Point: `main()`
+
+**Modes of Operation:**
+
+1. **Single Solve Mode** (default):
+   - Load JSON configuration
+   - Build `PDEProblem` or `SecondOrderPDEProblem`
+   - Solve PDE
+   - Generate plots (if enabled)
+   - Print diagnostics
+
+2. **Dataset Generation Mode** (`--dataset` flag):
+   - Load JSON template
+   - Sample parameters
+   - Generate multiple solutions
+   - Save dataset to `.pt` file
+
+**Command-Line Arguments:**
+
+```bash
+python run_problem.py <config.json> [options]
+
+Options:
+  --no-output      Suppress detailed output (exit code only)
+  --dataset        Enable dataset generation mode
+  --samples N      Number of samples for dataset generation
+  --save PATH      Save path for dataset file
+```
+
+**Time Configuration Parsing:**
+
+```python
+def _build_time_grid(time_cfg: Dict[str, Any]):
+    t0 = float(time_cfg.get("t0", 0.0))
+    t1 = float(time_cfg.get("t1", 1.0))
+    
+    if "t_eval" in time_cfg:
+        t_eval = np.asarray(time_cfg["t_eval"], dtype=float)
+    else:
+        num_points = int(time_cfg.get("num_points", 101))
+        t_eval = np.linspace(t0, t1, num_points)
+    
+    method = time_cfg.get("method", "RK45")
+    rtol = float(time_cfg.get("rtol", 1e-6))
+    atol = float(time_cfg.get("atol", 1e-8))
+    
+    solve_kwargs = {"method": method, "rtol": rtol, "atol": atol}
+    return (t0, t1), t_eval, solve_kwargs
+```
+
+**Visualization Configuration:**
+
+The CLI respects the `visualization` block in JSON:
+- `enable`: Enable/disable plotting
+- `save_dir`: Directory for saving plots
+- `type`: Plot type (currently only "1d" supported)
+
+**Output:**
+- Prints final time and L2 norm of solution
+- Saves plots to `plots/<save_dir>/` if visualization enabled
+- Returns exit code 0 on success, non-zero on failure
 
 ---
 
@@ -1021,16 +2064,51 @@ result = self._func(u, ux, uxx, uxxx, x, t, *param_vals)  # Fast execution
 
 ## Summary
 
-The `pde-mol` library implements a **modular, extensible, and safe** framework for solving PDEs using the Method of Lines. Key features:
+The `pde-mol` library implements a **modular, extensible, and safe** framework for solving PDEs using the Method of Lines. This document has provided a comprehensive overview of:
 
-1. **JSON-driven configuration** for easy problem specification
-2. **Modular components** (domain, IC, BC, operators) that can be tested independently
-3. **Clear finite-difference implementations** with second-order accuracy
-4. **Support for first- and second-order time derivatives**
-5. **Support for up to third-order spatial derivatives**
-6. **Comprehensive boundary condition support** (Dirichlet, Neumann, Robin, Periodic)
-7. **Safe expression evaluation** using SymPy
-8. **Flexible plotting utilities** for visualization
+### Core Components
 
-The architecture follows the stated design principles, making it easy to understand, extend, and maintain.
+1. **Domain and Grid Construction**: Structured 1D grids with periodic and non-periodic support
+2. **Initial Conditions**: Expression, values, or callable-based initialization
+3. **Boundary Conditions**: Dirichlet, Neumann, Robin, and Periodic with detailed mathematical formulations
+4. **Spatial Discretization**: Multiple schemes (central, upwind) optimized for different PDE terms
+5. **Operators**: Diffusion, Advection, and Expression operators with configurable discretization
+6. **Problem Classes**: First-order (`PDEProblem`) and second-order (`SecondOrderPDEProblem`) PDE solvers
+7. **Time Integration**: Integration with SciPy's `solve_ivp` with adaptive time stepping
+8. **Plotting**: Comprehensive visualization utilities for 1D solutions
+9. **Dataset Generation**: Parameterized problem solving for machine learning applications
+10. **CLI Interface**: Command-line tool for running JSON-defined problems
+
+### Key Features
+
+- **JSON-driven configuration** for easy problem specification
+- **Modular components** (domain, IC, BC, operators, discretization schemes) that can be tested independently
+- **Clear finite-difference implementations** with second-order accuracy
+- **Flexible discretization schemes** (central, upwind) optimized for different PDE terms
+- **Support for first- and second-order time derivatives**
+- **Support for up to third-order spatial derivatives**
+- **Comprehensive boundary condition support** (Dirichlet, Neumann, Robin, Periodic)
+- **Safe expression evaluation** using SymPy (no code injection)
+- **Fast compiled expressions** using `lambdify` for performance
+- **Flexible plotting utilities** for visualization
+- **Dataset generation** for parameterized problems
+- **Command-line interface** for easy execution
+
+### Architecture Highlights
+
+- **Separation of Concerns**: Each component (domain, IC, BC, operators, time integrator) is independent
+- **Extensibility**: New operators, BCs, and schemes can be added without modifying existing code
+- **Safety**: Safe expression evaluation prevents code injection
+- **Performance**: Precompiled expressions and optional sparse matrices
+- **Testability**: Each component can be tested in isolation
+
+### Mathematical Foundations
+
+The library implements the Method of Lines:
+1. **Spatial discretization**: PDE → system of ODEs using finite differences
+2. **Time integration**: ODE system → solution using adaptive time integrators
+3. **Boundary enforcement**: Applied at each time step for non-periodic domains
+4. **State management**: Different state representations for periodic vs. non-periodic domains
+
+The architecture follows the stated design principles (modularity, simplicity, extensibility, safety, performance), making it easy to understand, extend, and maintain.
 

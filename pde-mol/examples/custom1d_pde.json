@@ -28,6 +28,10 @@
         "a_param": 1.0,
         "nu_param": 0.05,
         "lam_param": 0.5
+      },
+      "schemes": {
+        "ux": "upwind_second",
+        "uxx": "central"
       }
     }
   ],
@@ -42,9 +46,6 @@
   "visualization": {
     "enable": true,
     "type": "1d",
-    "save_dir": "custom_pde_test",
-    "plot_initial": true,
-    "plot_final": true,
-    "plot_time_series": true
+    "save_dir": "custom_pde_test"
   }
 }

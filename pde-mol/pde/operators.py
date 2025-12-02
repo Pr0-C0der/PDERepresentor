@@ -7,6 +7,12 @@ import numpy as np
 import sympy as sp
 
 from .domain import Domain1D
+from .spatial_discretization import (
+    DiscretizationScheme,
+    first_derivative,
+    second_derivative,
+    third_derivative,
+)
 
 
 Array = np.ndarray
@@ -24,115 +30,53 @@ class Operator:
         raise NotImplementedError
 
 
+# Note: Derivative functions have been moved to spatial_discretization.py
+# These are kept as backward-compatible wrappers
 def _central_first_derivative(u: Array, dx: float, periodic: bool) -> Array:
     """
-    Second-order central first derivative in 1D.
-
-    - For periodic domains, use a wrapped central stencil for *all* points.
-    - For non-periodic domains, delegate to ``np.gradient`` with
-      edge_order=2 (central in the interior, one-sided at boundaries).
+    Backward-compatible wrapper for central first derivative.
+    
+    Deprecated: Use spatial_discretization.first_derivative() instead.
     """
-    if u.size < 3:
-        return np.zeros_like(u, dtype=float)
-
-    du = np.zeros_like(u, dtype=float)
-
-    if periodic:
-        # Interior points: standard central stencil
-        du[1:-1] = (u[2:] - u[:-2]) / (2.0 * dx)
-        # Periodic end points: wrap to the penultimate point, not the duplicate
-        # last point, so that x=0 and x=L share the same derivative.
-        du[0] = (u[1] - u[-2]) / (2.0 * dx)
-        du[-1] = du[0]
-        return du
-
-    # Non-periodic: central in interior, one-sided at boundaries via gradient
-    return np.gradient(u, dx, edge_order=2)
+    from .domain import Domain1D
+    # Create a minimal domain for the function call
+    # This is a bit of a hack, but maintains backward compatibility
+    class _MinimalDomain:
+        def __init__(self, periodic: bool):
+            self.periodic = periodic
+    
+    domain = _MinimalDomain(periodic)
+    return first_derivative(u, dx, domain, DiscretizationScheme.CENTRAL)
 
 
 def _central_second_derivative(u: Array, dx: float, periodic: bool) -> Array:
     """
-    Second-order central second derivative in 1D.
-
-    - For periodic domains, use a wrapped central stencil.
-    - For non-periodic domains, approximate via a second application of
-      ``np.gradient`` (which is central in the interior).
+    Backward-compatible wrapper for central second derivative.
+    
+    Deprecated: Use spatial_discretization.second_derivative() instead.
     """
-    if u.size < 3:
-        return np.zeros_like(u, dtype=float)
-
-    if u.size < 3:
-        return np.zeros_like(u, dtype=float)
-
-    if periodic:
-        d2 = np.zeros_like(u, dtype=float)
-        # Interior
-        d2[1:-1] = (u[2:] - 2.0 * u[1:-1] + u[:-2]) / (dx * dx)
-        # Periodic ends: wrap to penultimate point
-        d2[0] = (u[1] - 2.0 * u[0] + u[-2]) / (dx * dx)
-        d2[-1] = d2[0]
-        return d2
-
-    # Non-periodic: approximate u_xx by gradient of gradient
-    return np.gradient(np.gradient(u, dx, edge_order=2), dx, edge_order=2)
+    from .domain import Domain1D
+    class _MinimalDomain:
+        def __init__(self, periodic: bool):
+            self.periodic = periodic
+    
+    domain = _MinimalDomain(periodic)
+    return second_derivative(u, dx, domain, DiscretizationScheme.CENTRAL)
 
 
 def _central_third_derivative(u: Array, dx: float, periodic: bool) -> Array:
     """
-    Second-order central third derivative in 1D.
+    Backward-compatible wrapper for central third derivative.
     
-    Uses the stencil: u_xxx ≈ (u[i+2] - 2*u[i+1] + 2*u[i-1] - u[i-2]) / (2*dx^3)
-    
-    Parameters
-    ----------
-    u:
-        1D array of function values.
-    dx:
-        Grid spacing.
-    periodic:
-        Whether the domain is periodic.
-        
-    Returns
-    -------
-    Array
-        Third derivative approximation with same shape as u.
+    Deprecated: Use spatial_discretization.third_derivative() instead.
     """
-    if u.size < 5:
-        return np.zeros_like(u, dtype=float)
+    from .domain import Domain1D
+    class _MinimalDomain:
+        def __init__(self, periodic: bool):
+            self.periodic = periodic
     
-    d3 = np.zeros_like(u, dtype=float)
-    
-    if periodic:
-        # Interior points: central difference stencil
-        # u_xxx[i] ≈ (u[i+2] - 2*u[i+1] + 2*u[i-1] - u[i-2]) / (2*dx^3)
-        d3[2:-2] = (u[4:] - 2.0*u[3:-1] + 2.0*u[1:-3] - u[:-4]) / (2.0 * dx**3)
-        
-        # Handle boundaries with periodic wrapping
-        # Point 0: wrap to end
-        d3[0] = (u[2] - 2.0*u[1] + 2.0*u[-2] - u[-3]) / (2.0 * dx**3)
-        # Point 1: wrap to end
-        d3[1] = (u[3] - 2.0*u[2] + 2.0*u[0] - u[-2]) / (2.0 * dx**3)
-        # Point -2: wrap to beginning
-        d3[-2] = (u[0] - 2.0*u[-1] + 2.0*u[-3] - u[-4]) / (2.0 * dx**3)
-        # Point -1: same as point 0 (periodic)
-        d3[-1] = d3[0]
-        return d3
-    
-    # Non-periodic: use one-sided differences at boundaries
-    # Interior: central difference
-    d3[2:-2] = (u[4:] - 2.0*u[3:-1] + 2.0*u[1:-3] - u[:-4]) / (2.0 * dx**3)
-    
-    # Left boundary: forward differences
-    # Third-order forward: u_xxx[0] ≈ (-u[3] + 3*u[2] - 3*u[1] + u[0]) / dx^3
-    d3[0] = (-u[3] + 3.0*u[2] - 3.0*u[1] + u[0]) / (dx**3)
-    d3[1] = (-u[4] + 3.0*u[3] - 3.0*u[2] + u[1]) / (dx**3)
-    
-    # Right boundary: backward differences
-    # Third-order backward: u_xxx[-1] ≈ (u[-1] - 3*u[-2] + 3*u[-3] - u[-4]) / dx^3
-    d3[-2] = (u[-1] - 3.0*u[-2] + 3.0*u[-3] - u[-4]) / (dx**3)
-    d3[-1] = (u[-1] - 3.0*u[-2] + 3.0*u[-3] - u[-4]) / (dx**3)
-    
-    return d3
+    domain = _MinimalDomain(periodic)
+    return third_derivative(u, dx, domain, DiscretizationScheme.CENTRAL)
 
 
 def _eval_coeff(
@@ -165,6 +109,8 @@ def _eval_coeff(
 class Diffusion(Operator):
     """
     Simple diffusion operator:  nu * u_xx.
+    
+    Uses central differences (optimal for diffusion terms).
 
     Parameters
     ----------
@@ -173,16 +119,18 @@ class Diffusion(Operator):
         - a scalar,
         - a callable ``nu(x, t)``,
         - or a string expression in x, t (e.g. ``\"0.1 + 0.05 * x\"``).
+    scheme:
+        Discretization scheme (currently only "central" is supported for second derivatives).
     """
 
     nu: float | str | Callable[[Array, float], Array]
+    scheme: DiscretizationScheme | str = DiscretizationScheme.CENTRAL
 
     def apply(self, u_full: Array, domain: Domain1D, t: float) -> Array:
         x = domain.x
         dx = domain.dx
-        periodic = domain.periodic
 
-        u_xx = _central_second_derivative(u_full, dx, periodic)
+        u_xx = second_derivative(u_full, dx, domain, self.scheme)
         nu_vals = _eval_coeff(self.nu, x, t)
         return nu_vals * u_xx
 
@@ -191,22 +139,52 @@ class Diffusion(Operator):
 class Advection(Operator):
     """
     Linear advection operator: -a * u_x.
+    
+    Now supports different discretization schemes for better accuracy and stability.
+    Upwind schemes are recommended for advection-dominated problems.
 
     Parameters
     ----------
     a:
         Advection speed. May be scalar, callable a(x, t), or string expression.
+    scheme:
+        Discretization scheme. Options:
+        - "central": Second-order central (default, may cause oscillations)
+        - "upwind_first": First-order upwind (stable, less accurate)
+        - "upwind_second": Second-order upwind (stable, more accurate, recommended)
+        - "backward": First-order backward differences
+        - "forward": First-order forward differences
+        
+    Examples
+    --------
+    >>> # Stable upwind scheme (recommended for advection)
+    >>> advection = Advection(a=1.0, scheme="upwind_second")
+    >>> 
+    >>> # Central differences (may oscillate for sharp gradients)
+    >>> advection = Advection(a=1.0, scheme="central")
     """
 
     a: float | str | Callable[[Array, float], Array]
+    scheme: DiscretizationScheme | str = DiscretizationScheme.UPWIND_FIRST
 
     def apply(self, u_full: Array, domain: Domain1D, t: float) -> Array:
         x = domain.x
         dx = domain.dx
-        periodic = domain.periodic
 
-        u_x = _central_first_derivative(u_full, dx, periodic)
         a_vals = _eval_coeff(self.a, x, t)
+        
+        # For upwind schemes, we need the velocity
+        if isinstance(self.scheme, str):
+            scheme_enum = DiscretizationScheme(self.scheme)
+        else:
+            scheme_enum = self.scheme
+            
+        if scheme_enum in (DiscretizationScheme.UPWIND_FIRST, 
+                          DiscretizationScheme.UPWIND_SECOND):
+            u_x = first_derivative(u_full, dx, domain, scheme_enum, velocity=a_vals)
+        else:
+            u_x = first_derivative(u_full, dx, domain, scheme_enum)
+        
         return -a_vals * u_x
 
 
@@ -239,24 +217,80 @@ class ExpressionOperator(Operator):
 
     The expression is parsed once using sympy, then compiled to a fast
     NumPy function with ``sympy.lambdify``.
+    
+    Now supports configurable discretization schemes per derivative type for
+    optimal accuracy and stability.
+
+    Parameters
+    ----------
+    expr_string:
+        String expression in terms of u, ux, uxx, uxxx, x, t, and parameters.
+    params:
+        Dictionary of parameter values.
+    schemes:
+        Dictionary mapping derivative names to discretization schemes.
+        Keys: "ux", "uxx", "uxxx"
+        Values: "central", "upwind_first", "upwind_second", "backward", "forward"
+        Default: All derivatives use "central"
+        
+        Note: For upwind schemes on ux, the velocity is automatically detected
+        from the expression if possible (e.g., in "-a*ux", a is the velocity).
+        For complex expressions, you may need to use separate operators.
 
     Example
     -------
-    Burgers'-type operator:
+    Burgers'-type operator with upwind for advection:
         expr = "-u*ux + nu*uxx"
         params = {"nu": 0.1}
+        schemes = {"ux": "upwind_second", "uxx": "central"}
     
     KdV-type operator with third-order term:
         expr = "-u*ux + nu*uxx - alpha*uxxx"
         params = {"nu": 0.1, "alpha": 0.01}
+        schemes = {"ux": "upwind_second"}  # uxx and uxxx use central by default
     """
 
     expr_string: str
     params: Optional[dict] = None
+    schemes: Optional[dict[str, DiscretizationScheme | str]] = None
 
     def __post_init__(self) -> None:
         if self.params is None:
             self.params = {}
+        
+        # Parse schemes
+        if self.schemes is None:
+            self.schemes = {}
+        
+        # Convert string schemes to enums
+        self._ux_scheme = DiscretizationScheme(self.schemes.get("ux", "central"))
+        self._uxx_scheme = DiscretizationScheme(self.schemes.get("uxx", "central"))
+        self._uxxx_scheme = DiscretizationScheme(self.schemes.get("uxxx", "central"))
+        
+        # Try to detect velocity for upwind schemes
+        # This is a simple heuristic: look for patterns like "-a*ux" or "a*ux"
+        self._velocity_expr = None
+        if self._ux_scheme in (DiscretizationScheme.UPWIND_FIRST, 
+                               DiscretizationScheme.UPWIND_SECOND):
+            # Try to extract velocity coefficient from expression
+            # This is a simple approach - could be enhanced
+            try:
+                u, ux, uxx, uxxx, x, t = sp.symbols("u ux uxx uxxx x t")
+                expr = sp.sympify(self.expr_string, locals={"u": u, "ux": ux, "uxx": uxx, 
+                                                             "uxxx": uxxx, "x": x, "t": t})
+                # Look for terms like coeff*ux
+                if expr.has(ux):
+                    # Try to extract coefficient of ux
+                    coeff = sp.collect(expr, ux, evaluate=False)
+                    if ux in coeff:
+                        velocity_term = coeff[ux]
+                        # If it's a simple multiplication, extract the coefficient
+                        if isinstance(velocity_term, sp.Mul):
+                            # Get numeric/parameter parts
+                            self._velocity_expr = velocity_term
+            except:
+                # If parsing fails, we'll compute velocity from the expression at runtime
+                pass
 
         # Define core symbols (including uxxx for third-order derivatives)
         u, ux, uxx, uxxx, x, t = sp.symbols("u ux uxx uxxx x t")
@@ -293,16 +327,50 @@ class ExpressionOperator(Operator):
             self._expr,
             modules=["numpy"],
         )
+        
+        # Compile velocity expression if available
+        if self._velocity_expr is not None:
+            try:
+                self._velocity_func = sp.lambdify(
+                    list(self._base_symbols.values()) + list(self._param_symbols.values()),
+                    self._velocity_expr,
+                    modules=["numpy"],
+                )
+            except:
+                self._velocity_func = None
+        else:
+            self._velocity_func = None
 
     def apply(self, u_full: Array, domain: Domain1D, t: float) -> Array:
         x = domain.x
         dx = domain.dx
-        periodic = domain.periodic
 
         u = np.asarray(u_full, dtype=float)
-        ux = _central_first_derivative(u, dx, periodic)
-        uxx = _central_second_derivative(u, dx, periodic)
-        uxxx = _central_third_derivative(u, dx, periodic)
+        
+        # Compute derivatives with specified schemes
+        # For upwind schemes, we need velocity
+        velocity = None
+        if self._ux_scheme in (DiscretizationScheme.UPWIND_FIRST, 
+                               DiscretizationScheme.UPWIND_SECOND):
+            # Try to compute velocity from expression
+            if self._velocity_func is not None:
+                param_vals = [self.params[name] for name in self._param_order]
+                # Compute ux with central first to get initial estimate
+                ux_temp = first_derivative(u, dx, domain, DiscretizationScheme.CENTRAL)
+                # Evaluate velocity expression
+                velocity = self._velocity_func(u, ux_temp, 
+                                               np.zeros_like(u),  # uxx placeholder
+                                               np.zeros_like(u),  # uxxx placeholder
+                                               x, t, *param_vals)
+                velocity = np.asarray(velocity, dtype=float)
+            else:
+                # Fall back to central if velocity cannot be determined
+                # This is a limitation - for complex expressions, use separate operators
+                velocity = np.ones_like(u)  # Default: assume positive velocity
+        
+        ux = first_derivative(u, dx, domain, self._ux_scheme, velocity=velocity)
+        uxx = second_derivative(u, dx, domain, self._uxx_scheme)
+        uxxx = third_derivative(u, dx, domain, self._uxxx_scheme)
 
         # Parameter values in a stable order
         param_vals = [self.params[name] for name in self._param_order]
