@@ -151,7 +151,7 @@ what it does. For detailed signatures and parameter types, see the docstrings.
   1D advection operator: returns `-a(x,t) * u_x`.  
   - `a`: scalar, callable `a(x,t)`, or string expression in `x,t`.  
   - `scheme`: discretization scheme. Options:
-    - `"upwind_first"` (default): First-order upwind, stable for advection
+    - `"upwind_first"`: First-order upwind, stable for advection
     - `"upwind_second"`: Second-order upwind, more accurate while maintaining stability
     - `"central"`: Second-order central (may cause oscillations for sharp gradients)
   - `apply(u_full, domain: Domain1D, t) -> array`.
@@ -400,7 +400,7 @@ For second-order problems (u_tt = L[u] + M[u_t]):
 Supported operator entries:
 
 - `"diffusion"`: `{"type": "diffusion", "nu": ..., "scheme": "central"}` (optional `scheme`, default: `"central"`)
-- `"advection"`: `{"type": "advection", "a": ..., "scheme": "upwind_first"}` (optional `scheme`, default: `"upwind_first"`)
+- `"advection"`: `{"type": "advection", "a": ..., "scheme": "central"}` (optional `scheme`, default: `"central"`)
   - Scheme options: `"upwind_first"`, `"upwind_second"`, `"central"`, `"backward"`, `"forward"`
 - `"expression"` / `"expression_operator"`:
   - `expr` in variables `u, ux, uxx, uxxx, x, t` plus optional `params`.
@@ -793,7 +793,7 @@ op = ExpressionOperator(
 ```
 
 **Default Schemes:**
-- `Advection`: `"upwind_first"` (stable default)
+- `Advection`: `"central"` (default)
 - `Diffusion`: `"central"` (optimal for diffusion)
 - `ExpressionOperator`: `"central"` for all derivatives (can be overridden with `schemes` dict)
 

@@ -497,7 +497,7 @@ def _parse_operator(op_cfg: JsonDict) -> Operator:
 1. Extract `type` field and convert to lowercase
 2. Based on type:
    - **"diffusion"**: Extract `nu` (required), `scheme` (optional, default: "central"), create `Diffusion`
-   - **"advection"**: Extract `a` (required), `scheme` (optional, default: "upwind_first"), create `Advection`
+   - **"advection"**: Extract `a` (required), `scheme` (optional, default: "central"), create `Advection`
    - **"expression"** or **"expression_operator"**: Extract `expr` (required), `params` (optional), `schemes` (optional), create `ExpressionOperator`
 3. Return `Operator` instance
 
@@ -1170,14 +1170,14 @@ class Advection(Operator):
 ```
 
 **Key Features:**
-- **Default scheme**: `UPWIND_FIRST` for stability (can be overridden)
+- **Default scheme**: `CENTRAL` (can be overridden to upwind for better stability)
 - **Velocity-aware**: Upwind schemes use the advection speed to determine upwind direction
 - Supports constant, space-dependent, or time-dependent advection speed
 
-**Why Upwind by Default?**
-- Central differences can cause oscillations for advection-dominated problems
-- Upwind schemes respect the direction of information flow
-- First-order upwind is very stable, though less accurate
+**Note on Scheme Selection:**
+- Central differences are the default (second-order accurate)
+- For advection-dominated problems with sharp gradients, consider using `"upwind_second"` for better stability
+- Upwind schemes respect the direction of information flow and prevent oscillations
 
 **Example:** For $a(x,t) = 1.0 + 0.5\cos(x)$ with second-order upwind:
 ```python

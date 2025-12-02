@@ -159,7 +159,7 @@ def _parse_operator(op_cfg: JsonDict) -> Operator:
         if "a" not in op_cfg:
             raise ValueError("Advection operator requires 'a' coefficient.")
         a = op_cfg["a"]
-        scheme = op_cfg.get("scheme", "upwind_first")
+        scheme = op_cfg.get("scheme", "central")
         return Advection(a=a, scheme=scheme)
 
     if op_type in ("expression", "expression_operator"):

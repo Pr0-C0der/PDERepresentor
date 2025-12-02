@@ -149,23 +149,23 @@ class Advection(Operator):
         Advection speed. May be scalar, callable a(x, t), or string expression.
     scheme:
         Discretization scheme. Options:
-        - "central": Second-order central (default, may cause oscillations)
+        - "central": Second-order central (default)
         - "upwind_first": First-order upwind (stable, less accurate)
-        - "upwind_second": Second-order upwind (stable, more accurate, recommended)
+        - "upwind_second": Second-order upwind (stable, more accurate, recommended for advection)
         - "backward": First-order backward differences
         - "forward": First-order forward differences
         
     Examples
     --------
-    >>> # Stable upwind scheme (recommended for advection)
-    >>> advection = Advection(a=1.0, scheme="upwind_second")
+    >>> # Central differences (default)
+    >>> advection = Advection(a=1.0)
     >>> 
-    >>> # Central differences (may oscillate for sharp gradients)
-    >>> advection = Advection(a=1.0, scheme="central")
+    >>> # Stable upwind scheme (recommended for advection-dominated problems)
+    >>> advection = Advection(a=1.0, scheme="upwind_second")
     """
 
     a: float | str | Callable[[Array, float], Array]
-    scheme: DiscretizationScheme | str = DiscretizationScheme.UPWIND_FIRST
+    scheme: DiscretizationScheme | str = DiscretizationScheme.CENTRAL
 
     def apply(self, u_full: Array, domain: Domain1D, t: float) -> Array:
         x = domain.x
