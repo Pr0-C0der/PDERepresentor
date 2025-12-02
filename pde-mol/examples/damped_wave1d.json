@@ -23,9 +23,11 @@
     ],
     "u_t_operators": [
         {
-            "type": "advection",
-            "a": 0.1,
-            "scheme": "upwind_first"
+            "type": "expression",
+            "expr": "-gamma*u",
+            "params": {
+                "gamma": 0.1
+            }
         }
     ],
     "time": {

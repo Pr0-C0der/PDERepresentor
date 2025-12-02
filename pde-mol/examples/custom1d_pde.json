@@ -2,8 +2,8 @@
   "domain": {
     "type": "1d",
     "x0": 0.0,
-    "x1": 1.0,
-    "nx": 201,
+    "x1": 5.0,
+    "nx": 1000,
     "periodic": false
   },
   "initial_condition": {
@@ -30,16 +30,16 @@
         "lam_param": 0.5
       },
       "schemes": {
-        "ux": "upwind_second",
+        "ux": "central",
         "uxx": "central"
       }
     }
   ],
   "time": {
     "t0": 0.0,
-    "t1": 1.0,
-    "num_points": 100,
-    "method": "RK45",
+    "t1": 5.0,
+    "num_points": 1000,
+    "method": "BDF",
     "rtol": 1e-6,
     "atol": 1e-8
   },

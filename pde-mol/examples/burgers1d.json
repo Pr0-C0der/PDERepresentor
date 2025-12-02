@@ -3,7 +3,7 @@
         "type": "1d",
         "x0": 0.0,
         "x1": 6.283185307179586,
-        "nx": 100,
+        "nx": 1000,
         "periodic": true
     },
     "initial_condition": {
@@ -33,8 +33,8 @@
     ],
     "time": {
         "t0": 0.0,
-        "t1": 0.1,
-        "num_points": 100,
+        "t1": 3.0,
+        "num_points": 1000,
         "method": "RK45",
         "rtol": 1e-6,
         "atol": 1e-8

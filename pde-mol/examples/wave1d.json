@@ -3,7 +3,7 @@
         "type": "1d",
         "x0": 0.0,
         "x1": 6.283185307179586,
-        "nx": 201,
+        "nx": 1000,
         "periodic": true
     },
     "initial_condition": {
@@ -16,16 +16,18 @@
     },
     "spatial_operators": [
         {
-            "type": "diffusion",
-            "nu": 1.0,
-            "scheme": "central"
+            "type": "expression",
+            "expr": "uxx",
+            "schemes": {
+                "uxx": "upwind_first"
+            }
         }
     ],
     "time": {
         "t0": 0.0,
-        "t1": 2.0,
-        "num_points": 100,
-        "method": "RK45",
+        "t1": 5.0,
+        "num_points": 1000,
+        "method": "BDF",
         "rtol": 1e-6,
         "atol": 1e-8
     },
